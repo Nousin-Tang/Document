@@ -1,6 +1,6 @@
 # Linux 常用命令
 
-## ==iptables== 开启防火墙端口号
+## <font color='red'>iptables</font> 开启防火墙端口号
 
 ### 查看开放的端口号
 ```
