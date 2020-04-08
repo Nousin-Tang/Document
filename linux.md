@@ -1,11 +1,9 @@
 # Linux 常用命令
 
-## <font color='red'>iptables</font> 开启防火墙端口号
+## `iptables` 开启防火墙端口号
 
 ### 查看开放的端口号
-```
-iptables -L -n
-```
+`iptables -L -n`
 
 ### 关闭端口号
 ```
@@ -20,6 +18,4 @@ iptables -I OUTPUT -ptcp --dport 端口号 -j ACCEPT
 ```
 
 ### 保存修改
-```
-service iptables save
-```
+`service iptables save`
