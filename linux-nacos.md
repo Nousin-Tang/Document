@@ -4,7 +4,7 @@
 cd /usr/local
 wget https://github.com/alibaba/nacos/releases/download/1.2.1/nacos-server-1.2.1.tar.gz
 tar -zxvf nacos-server-1.2.1.tar.gz
-cd /usr/local/nacos-server-1.2.1/bin
+cd /usr/local/nacos/bin
 ```
 ### 启动
 `bash startup.sh -m standalone`
@@ -15,4 +15,4 @@ cd /usr/local/nacos-server-1.2.1/bin
 `curl -X PUT 'localhost:8848/nacos/v1/cs/ops/log?logName=config-dump&logLevel=warn'`
 
 ### 查看nacos服务进程
-`ps -ef | grep nacos`
+`ps -ef|grep nacos`
