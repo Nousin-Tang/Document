@@ -19,3 +19,12 @@ iptables -I OUTPUT -ptcp --dport 端口号 -j ACCEPT
 
 ### 保存修改
 `service iptables save`
+
+## 文件操作
+
+### `rm` 命令
+```
+rm -rf /var/log/httpd/access
+rm -f /var/log/httpd/access.log
+```
+> -r 就是向下递归，不管有多少级目录，一并删除; -f 就是直接强行删除，不作任何提示的意思
