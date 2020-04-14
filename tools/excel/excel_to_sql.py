@@ -1,6 +1,7 @@
 # coding=utf-8
 from openpyxl import load_workbook
 import time
+import os
 
 
 # 查找字符字符串最后一次出现的位置
@@ -15,9 +16,11 @@ def find_last(_string, _str):
 
 # 读取excel的数据
 def read_excel():
-    filename = '/Users/unnous/My/DB-Design.xlsx'
+    filename = 'DB-Design.xlsx'
+    PROJECT_ROOT = os.path.dirname(os.path.realpath(__file__))#获取项目根目录
+    filepath = os.path.join(PROJECT_ROOT, filename) #文件路径
     # 打开一个workbook
-    wb = load_workbook(filename=filename, data_only=True)
+    wb = load_workbook(filename=filepath, data_only=True)
     # 获取表索引
     index_sheet = wb.get_sheet_by_name('index')
     # 需要生成创建语句的表
