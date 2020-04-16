@@ -1,12 +1,16 @@
 # JDK
-###创建文件夹
-`mkdir /usr/local/java/`
-### [下载](https://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html)
+### 创建文件夹
+```
+mkdir /usr/local/java/
+cd /usr/local/java/
+```
+### 下载
+` wget https://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html`
 
 ### 解压
 `tar -zxvf jdk-8u231-linux-x64.tar.gz`
 
-###修改profile文件 ： 
+### 修改profile文件 ： 
 * 修改文件：`vim /etc/profile`
 
 * 追加信息
