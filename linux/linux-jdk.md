@@ -4,6 +4,7 @@
 mkdir /usr/local/java/
 cd /usr/local/java/
 ```
+
 ### 下载
 ` wget https://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html`
 

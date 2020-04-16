@@ -22,19 +22,19 @@ sudo docker run -e 'ACCEPT_EULA=Y' -e 'MSSQL_SA_PASSWORD=UnNous741953.t' \
 
 #### 使用navicat链接
 
-###还原数据库
-####创建镜像sqlserver的文件目录
+### 还原数据库
+#### 创建镜像sqlserver的文件目录
 `sudo docker exec -it sqlserver mkdir /var/opt/mssql/backup`
-####拷贝文件
+#### 拷贝文件
 `sudo docker cp CZSBGL3.bak sqlserver:/var/opt/mssql/backup`
-####还原数据库
+#### 还原数据库
 ```
 sudo docker exec -it sqlserver /opt/mssql-tools/bin/sqlcmd -S localhost \
     -U SA -P 'UnNous741953.t' \
     -Q 'RESTORE FILELISTONLY FROM DISK = "/var/opt/mssql/backup/CZSBGL3.bak"' \
         | tr -s ' ' | cut -d ' ' -f 1-2
 ```
-####调用RESTORE DATABASE命令才能还原在容器内的数据库。 为每个文件上一步中指定新路径。
+#### 调用RESTORE DATABASE命令才能还原在容器内的数据库。 为每个文件上一步中指定新路径。
 ```
 sudo docker exec -it sqlserver /opt/mssql-tools/bin/sqlcmd \
     -S localhost -U SA -P 'UnNous741953.t' \

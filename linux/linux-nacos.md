@@ -1,5 +1,5 @@
 # Nacos
-### [下载](https://github.com/alibaba/nacos/releases)
+### 下载
 ```
 cd /usr/local
 wget https://github.com/alibaba/nacos/releases/download/1.2.1/nacos-server-1.2.1.tar.gz

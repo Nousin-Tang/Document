@@ -2,7 +2,7 @@
 ### 安装必要包
 `yum -y install gcc zlib zlib-devel pcre-devel openssl openssl-devel`
 
-### [下载Nginx](http://nginx.org/download/)
+### 下载Nginx
 ```
 cd /usr/local
 mkdir nginx

@@ -1,6 +1,6 @@
 # Redis
 
-### 下载 (http://download.redis.io/releases)
+### 下载
 ```
 cd /usr/local
 wget http://download.redis.io/releases/redis-5.0.8.tar.gz
