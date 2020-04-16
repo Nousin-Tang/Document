@@ -17,10 +17,12 @@ def find_last(_string, _str):
 # 读取excel的数据
 def read_excel():
     filename = 'DB-Design.xlsx'
-    PROJECT_ROOT = os.path.dirname(os.path.realpath(__file__))#获取项目根目录
-    filepath = os.path.join(PROJECT_ROOT, filename) #文件路径
+    # 获取项目根目录
+    PROJECT_ROOT = os.path.dirname(os.path.realpath(__file__))
+    # 文件路径
+    filePath = os.path.join(PROJECT_ROOT, filename)
     # 打开一个workbook
-    wb = load_workbook(filename=filepath, data_only=True)
+    wb = load_workbook(filename=filePath, data_only=True)
     # 获取表索引
     index_sheet = wb.get_sheet_by_name('index')
     # 需要生成创建语句的表
@@ -114,6 +116,21 @@ def read_excel():
                     table_sql += ' DEFAULT \'' + default + '\''
                 else:
                     table_sql += ' DEFAULT ' + default
+            else:
+                if column_type_upper == 'TINYINT' \
+                        or column_type_upper == 'INT' \
+                        or column_type_upper == 'BIGINT' \
+                        or column_type_upper == 'DECIMAL':
+                    table_sql += ' DEFAULT 0'
+                elif column_type_upper == 'DATETIME' \
+                        or column_type_upper == 'TIMESTAMP':
+                    table_sql += ' DEFAULT CURRENT_TIMESTAMP'
+                elif column_type_upper == 'CHAR' \
+                        or column_type_upper == 'VARCHAR' \
+                        or column_type_upper == 'TEXT' \
+                        or column_type_upper == 'LONGTEXT':
+                    table_sql += ' DEFAULT \'\''
+
             # 备注
             if column_desc != 'None':
                 table_sql += " COMMENT '" + column_desc + "'"
@@ -125,7 +142,7 @@ def read_excel():
                     primary_key_set.append(column_name)
                 elif 'INDEX' == index_upper:
                     index_sql += '\nALTER TABLE ' + table_name + \
-                                 ' ADD INDEX index_' + column_name + ' (' + column_name + ');'
+                                 ' ADD INDEX index_' + column_name.lower() + ' (' + column_name + ');'
                 elif 'UNIQUE' == index_upper:
                     unique_key_set.append(column_name)
 
@@ -135,9 +152,10 @@ def read_excel():
                 if primary_key_set:
                     table_sql += ',\n\tPRIMARY KEY (' + ','.join(primary_key_set) + ') USING BTREE'
 
-        table_sql += '\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 ROW_FORMAT=DYNAMIC COMMENT=\'' + table_comment + '\';'
+        table_sql += '\n) ENGINE=INNODB DEFAULT CHARSET=utf8mb4 ROW_FORMAT=DYNAMIC COMMENT=\'' + table_comment + '\';'
         table_sql += index_sql
-        table_sql += '\nALTER TABLE ' + table_name + ' ADD UNIQUE (' + ','.join(unique_key_set) + ');'
+        if unique_key_set:
+            table_sql += '\nALTER TABLE ' + table_name + ' ADD UNIQUE (' + ','.join(unique_key_set) + ');'
 
         # 当前时间
         datetime = time.strftime('%Y-%m-%d %H%M%S', time.localtime(time.time()))
