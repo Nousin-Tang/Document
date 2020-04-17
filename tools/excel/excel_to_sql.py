@@ -37,11 +37,13 @@ def read_excel():
     if len(table_list) < 1:
         return
 
+    table_sql_list = list()
     for table_index_name in table_list:
         sheet = wb.get_sheet_by_name(table_index_name)
         table_name = str(sheet['b2'].value)
         table_comment = str(sheet['e2'].value)
-        table_sql = 'CREATE TABLE ' + table_name + ' ('
+        table_sql = 'DROP TABLE IF EXISTS ' + table_name + ';\n'
+        table_sql += 'CREATE TABLE ' + table_name + ' ('
         primary_key_set = list()
         index_sql = ''
         unique_key_set = list()
@@ -122,9 +124,6 @@ def read_excel():
                         or column_type_upper == 'BIGINT' \
                         or column_type_upper == 'DECIMAL':
                     table_sql += ' DEFAULT 0'
-                elif column_type_upper == 'DATETIME' \
-                        or column_type_upper == 'TIMESTAMP':
-                    table_sql += ' DEFAULT CURRENT_TIMESTAMP'
                 elif column_type_upper == 'CHAR' \
                         or column_type_upper == 'VARCHAR' \
                         or column_type_upper == 'TEXT' \
@@ -157,13 +156,15 @@ def read_excel():
         if unique_key_set:
             table_sql += '\nALTER TABLE ' + table_name + ' ADD UNIQUE (' + ','.join(unique_key_set) + ');'
 
-        # 当前时间
-        datetime = time.strftime('%Y-%m-%d %H%M%S', time.localtime(time.time()))
-        sql_file_name = filename[0:find_last(filename, '.')] + datetime + '.sql'
-        # 打开文档，没有则创建
-        sql_file = open(sql_file_name, 'w')
-        sql_file.write(table_sql)
-        sql_file.close()
+        table_sql_list.append(table_sql)
+
+    # 当前时间
+    datetime = time.strftime('%Y-%m-%d %H%M%S', time.localtime(time.time()))
+    sql_file_name = filename[0:find_last(filename, '.')] + datetime + '.sql'
+    # 打开文档，没有则创建
+    sql_file = open(sql_file_name, 'w')
+    sql_file.write("\n\n".join(table_sql_list))
+    sql_file.close()
 
 
 if __name__ == '__main__':
