@@ -82,12 +82,23 @@ List<String> lowCaloricDishesName =
         .sorted(Comparator.comparing(Dish::getCalories))
         // 方法引用（中间操作）
         .map(Dish::getName)
-        // 终端操作（仅有一个）（触发整条“流水线”方法执行）
+        // 聚合数据（终端操作）（仅有一个）（触发整条“流水线”方法执行）
         .collect(Collectors.toList());
 
 System.out.println(lowCaloricDishesName);
 // [season fruit, prawns, rice]
 ```
+
+1. 操作
+
+|  操作  |   类型   |   返回类型   |   参数   |   描述   |
+| ---- | ---- | ---- | ---- | ---- |
+|  filter  | Intermediate | Stream<T> | Predicate<T> | T -> boolean |
+| map | Intermediate | Stream<R> | Funcation<T,R> | T -> R |
+| limit | Intermediate | Stream<T> |      |      |
+| sorted | Intermediate | Stream<T> | Comparator<T> | (T,T) -> int |
+| distinct | Intermediate | Stream<T> |      |      |
+| collect | Terminal | R | Collector<? super T, A, R> |      |
 
 
 
