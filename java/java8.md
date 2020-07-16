@@ -7,8 +7,8 @@
 
 
 ## Stream
-Stream 是什么？
-a sequence of elements from a source that supports data processing operations.
+Stream 是什么？  
+a sequence of elements from a source that supports data processing operations.  
 支持（集合、数组或者I/O）数据处理操作的一系列元素
 
 示例：
@@ -89,17 +89,46 @@ System.out.println(lowCaloricDishesName);
 // [season fruit, prawns, rice]
 ```
 
-1. 操作
+### 常用方法操作
 
-|  操作  |   类型   |   返回类型   |   参数   |   描述   |
-| ---- | ---- | ---- | ---- | ---- |
-|  filter  | Intermediate | Stream<T> | Predicate<T> | T -> boolean |
-| map | Intermediate | Stream<R> | Funcation<T,R> | T -> R |
-| limit | Intermediate | Stream<T> |      |      |
-| sorted | Intermediate | Stream<T> | Comparator<T> | (T,T) -> int |
-| distinct | Intermediate | Stream<T> |      |      |
-| collect | Terminal | R | Collector<? super T, A, R> |      |
+1. Intermediate
 
+    * map (mapToInt, flatMap 等): 类型转换
+    * filter: 筛选出符合条件的元素
+    * distinct: 去重(调用Object#equals)
+    * sorted: 自然顺序排序, 如果该流的元件不是Comparable，抛出java.lang.ClassCastException
+    * peek: 窥视, 
+    * limit
+    * skip
+    * parallel
+    * sequential
+    * unordered
+
+1. Terminal
+
+    * forEach
+    * forEachOrdered
+    * toArray
+    * reduce
+    * collect
+    * min
+    * max
+    * count
+    * anyMatch
+    * allMatch
+    * noneMatch
+    * findFirst
+    * findAny
+    * iterator
+
+1. Short-circuiting
+
+    * anyMatch
+    * allMatch
+    * noneMatch
+    * findFirst
+    * findAny
+    * limit
 
 
 ## 新的日期时间 API
