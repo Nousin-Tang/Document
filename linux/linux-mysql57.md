@@ -78,3 +78,11 @@ groupadd mysql && useradd -r -g mysql mysql
 6. 重启服务器验证
 
 `reboot`
+
+# 创建用户
+## 新建用户
+`CREATE USER '用户名'@'%' IDENTIFIED BY '123';`
+## 授权
+`GRANT ALL ON *.* TO '用户名'@'%';`
+## 设置用户密码
+`SET PASSWORD FOR '用户名'@'%' = PASSWORD('用户密码');`
