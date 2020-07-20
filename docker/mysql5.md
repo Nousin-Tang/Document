@@ -24,9 +24,9 @@ docker stop mysql5
 
 
 ### 虚拟机与主机文件交换
-把docker容器中的配置文件复制到主机中: docker cp mysql5:/etc/mysql/mysql.conf.d/mysqld.cnf D:\mysql_conf
+把docker容器中的配置文件复制到主机中: `docker cp mysql5:/etc/mysql/mysql.conf.d/mysqld.cnf D:\mysql_conf`
 
-把主机中的配置文件复制到docker容器中: docker cp D:\mysql_conf mysql5:/etc/mysql/mysql.conf.d/mysqld.cnf
+把主机中的配置文件复制到docker容器中: `docker cp D:\mysql_conf mysql5:/etc/mysql/mysql.conf.d/mysqld.cnf`
 
 ### 忽略大小写问题设置
-	配置文件中追加:lower_case_table_names=1
+配置文件中追加:`lower_case_table_names=1`
