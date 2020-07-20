@@ -45,7 +45,7 @@ groupadd mysql && useradd -r -g mysql mysql
 ### 授权远程登陆   
 `grant all privileges on *.* to root@'%' identified by '123456'; flush privileges;`
 
-#【卸载】
+## 【卸载】
 
 1. rm -rf /root/.mysql_sercret  
 
@@ -53,7 +53,7 @@ groupadd mysql && useradd -r -g mysql mysql
 
 3. rm -rf /usr/local/mysql
 
-#【mysql5.6 开机自启动】
+## 【mysql5.6 开机自启动】
 
 1. 将服务文件复制一份到init.d下，并重命名为mysqld 
 
@@ -79,10 +79,10 @@ groupadd mysql && useradd -r -g mysql mysql
 
 `reboot`
 
-# 创建用户
-## 新建用户
+## 创建用户
+### 新建用户
 `CREATE USER '用户名'@'%' IDENTIFIED BY '123';`
-## 授权
+### 授权
 `GRANT ALL ON *.* TO '用户名'@'%';`
-## 设置用户密码
+### 设置用户密码
 `SET PASSWORD FOR '用户名'@'%' = PASSWORD('用户密码');`
