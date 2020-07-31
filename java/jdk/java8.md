@@ -455,10 +455,185 @@ void test3(){
     * findAny: 返回当前流中的任意元素
     
 
+### 示例
+#### list 转 map
+```java
+public static void mapTest() {
+    List<Dish> menu = getData();
+    // list 转 map
+    menu.stream().collect(Collectors.toMap(Dish::getName, Dish::getCalories, (k1, k2) -> k1)).forEach((k, v) -> System.out.printf("k: %s, v: %d \n", k, v));
+    // k: season fruit, v: 120
+    // k: chicken, v: 400
+    // k: pizza, v: 550
+    // k: salmon, v: 450
+    // k: beef, v: 700
+    // k: rice, v: 350
+    // k: pork, v: 800
+    // k: prawns, v: 300
+    // k: french fries, v: 530
+}
+```
+
+#### 分组与求和
+统计，按照是否是素菜分组后菜品卡路里总和
+- 方法一
+```java
+public static void groupTest() {
+    List<Dish> menu = getData();
+    // 按照是否是 素菜 进行分组
+    Map<Boolean, List<Dish>> vegetarianGroup = menu.stream()
+        .collect(Collectors.groupingBy(Dish::isVegetarian));
+    // 遍历
+    vegetarianGroup.forEach((vegetarian, list) -> {
+        // 当前组是否是 素菜
+        String isVegetarian = vegetarian ? "yes" : "no";
+        // 当前组菜单名称
+        String names = list.stream().map(Dish::getName).collect(Collectors.joining(","));
+       // 当前组卡路里总和
+//int allCalories = list.stream().map(Dish::getCalories).reduce(Integer::sum).orElse(0);
+        int allCalories = list.stream().mapToInt(Dish::getCalories).sum();
+        System.out.printf("is vegetarian ? %s, they are %s, full calories is %d \n", 
+            isVegetarian, names, allCalories);
+    });
+    // is vegetarian ? no, they are pork,beef,chicken,prawns,salmon. sum calories is 2650
+    // is vegetarian ? yes, they are french fries,rice,season fruit,pizza. sum calories is 1550
+}
+```
+- 方法二
+```java
+public static void groupTest2() {
+    List<Dish> menu = getData();
+    // 求素菜与荤菜的卡路里总和
+    Map<Boolean, Integer> vegetarianSum = menu.stream()
+    		.collect(Collectors.groupingBy(Dish::isVegetarian,
+             Collectors.summingInt(Dish::getCalories)));
+    // 遍历
+    vegetarianSum.forEach((vegetarian, sum) -> {
+        // 当前组是否是 素菜
+        String isVegetarian = vegetarian ? "yes" : "no";
+        System.out.printf("is vegetarian ? %s, sum calories is %d\n", isVegetarian, sum);
+    });
+    // is vegetarian ? no, sum calories is 2650
+    // is vegetarian ? yes, sum calories is 1550
+}
+```
+- 方法三
+```java
+public static void groupTest3() {
+    List<Dish> menu = getData();
+    // 求素菜与荤菜的卡路里总和 平均值...
+    Map<Boolean, IntSummaryStatistics> vegetarianGroup = menu.stream()
+            .collect(Collectors.groupingBy(Dish::isVegetarian,
+                  Collectors.summarizingInt(Dish::getCalories)));
+    // 遍历
+    vegetarianGroup.forEach((vegetarian, statistics) -> {
+        // 当前组是否是 素菜
+        String isVegetarian = vegetarian ? "yes" : "no";
+        System.out.printf("is vegetarian ? %s, sum calories is %d, average is %d\n",
+                isVegetarian, statistics.getSum(), (int)statistics.getAverage());
+    });
+    // is vegetarian ? no, sum calories is 2650, average is 530
+    // is vegetarian ? yes, sum calories is 1550, average is 387
+}
+```
+#### 排序
+排序-按照素菜、卡路里与名称进行顺序排序
+```java
+public static void sortTest() {
+    List<Dish> menu = getData();
+    menu.sort(Comparator.comparing(Dish::isVegetarian)
+                .thenComparing(Dish::getCalories)
+              	.thenComparing(Dish::getName));
+    menu.forEach(System.out::println);
+}
+// Dish(name=prawns, vegetarian=false, calories=300, type=FISH)
+// Dish(name=chicken, vegetarian=false, calories=400, type=MEAT)
+// Dish(name=salmon, vegetarian=false, calories=450, type=FISH)
+// Dish(name=beef, vegetarian=false, calories=700, type=MEAT)
+// Dish(name=pork, vegetarian=false, calories=800, type=MEAT)
+// Dish(name=season fruit, vegetarian=true, calories=120, type=OTHER)
+// Dish(name=rice, vegetarian=true, calories=350, type=OTHER)
+// Dish(name=french fries, vegetarian=true, calories=530, type=OTHER)
+// Dish(name=pizza, vegetarian=true, calories=550, type=OTHER) 
+```
+
 ## 新的日期时间 API
+### 认识新的日期API类
+- Instant         时间戳
+- Duration        持续时间、时间差
+- LocalDate       只包含日期，比如：2018-09-24
+- LocalTime       只包含时间，比如：10:32:10
+- LocalDateTime   包含日期和时间，比如：2018-09-24 10:32:10
+- Peroid          时间段
+- ZoneOffset      时区偏移量，比如：+8:00
+- ZonedDateTime   带时区的日期时间
+- Clock           时钟，可用于获取当前时间戳
+- java.time.format.DateTimeFormatter      时间格式化类
 
+#### 构造
 
+```java
+public static void main(String[] args) {
+    // 系统时间
+    System.out.println(LocalDate.now()); // 2020-08-01
+    System.out.println(LocalDateTime.now()); // 2020-08-01T00:33:27.743
+    // 指定时间
+    System.out.println(LocalDate.of(2020, 1, 1)); // 2020-01-01
+    System.out.println(LocalDateTime.of(2020, 1, 1, 0, 0, 0)); // 2020-01-01T00:00
+}
+```
+#### 时间推移
+```java
+public static void main(String[] args) {
+    // 当前时间向后推一个月零4天
+    System.out.println(LocalDate.now().plusMonths(1).plusDays(4)); // 2020-09-05
+}
+```
+#### 时区
+```java
+public static void main(String[] args) {
+    // 上海时间
+    ZoneId shanghaiZoneId = ZoneId.of("Asia/Shanghai");
+    ZonedDateTime shanghaiZonedDateTime = ZonedDateTime.now(shanghaiZoneId);
+    // 东京时间
+    ZoneId tokyoZoneId = ZoneId.of("Asia/Tokyo");
+    ZonedDateTime tokyoZonedDateTime = ZonedDateTime.now(tokyoZoneId);
+    // 格式化
+    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    System.out.println("上海时间: " + shanghaiZonedDateTime.format(formatter)); // 上海时间: 2020-08-01 00:38:08
+    System.out.println("东京时间: " + tokyoZonedDateTime.format(formatter)); // 东京时间: 2020-08-01 01:38:08
+}
+```
+#### 解析日期
+```java
+public static void main(String[] args) {
+    // 解析日期
+    String dateText = "20200801";
+    LocalDate date = LocalDate.parse(dateText, DateTimeFormatter.BASIC_ISO_DATE);
+    System.out.println("格式化之后的日期=" + date); // 格式化之后的日期=2020-08-01
+}
+```
 
+### `LocalDateTime` 与 ` Date` 相互转化
+```java
+public static void main(String[] args) {
+    // 方法一：
+    LocalDateTime localDateTime = new Date().toInstant()
+      	.atZone(ZoneId.systemDefault()).toLocalDateTime();
+    System.out.println(localDateTime); // 2020-08-01T00:47:15.327
+    
+    // 方法二：
+    LocalDateTime localDateTime1 = LocalDateTime
+      		.ofInstant(new Date().toInstant(), ZoneId.systemDefault());
+    System.out.println(localDateTime1); // 2020-08-01T00:47:15.327
+}
+```
+```java
+public static void main(String[] args) {
+    Date date = Date.from(LocalDateTime.now().atZone(ZoneId.systemDefault()).toInstant());
+    System.out.println(date); // Sat Aug 01 00:51:56 CST 2020
+}
+```
 
 ## Optional 类
 
