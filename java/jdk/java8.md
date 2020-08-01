@@ -11,7 +11,7 @@
 Runnable runnable = new Runnable() {
     @Override
     public void run() {
-        //
+        System.out.print("Hello World!")
     }
 };
 
@@ -19,7 +19,7 @@ Runnable runnable = new Runnable() {
 Thread thread = new Thread(new Runnable() {
     @Override
     public void run() {
-        //
+        System.out.print("Hello World!")
     }
 });
 ```
@@ -27,12 +27,12 @@ Thread thread = new Thread(new Runnable() {
 ```java
 /**创建一个Runnable接口的实例*/
 Runnable runnable = () -> {
-    //
+    System.out.print("Hello World!")
 };
 
 /**如果是创建一个线程可以这样*/
 Thread thread = new Thread(() -> {
-    //
+    System.out.print("Hello World!")
 });
 ```
 ### Lambda 表达式定义
@@ -102,10 +102,15 @@ public class Tests {
 ```java
 // 下面的代码，它会把 "Hello, world!" 打印两遍
 public class Hello {
-		// lambda 表达式中的 this 指的是 Hello 对象 
+    
+	// lambda 表达式中的 this 指的是 Hello 对象 
   	Runnable r1 = () -> { System.out.println(this); }
   	Runnable r2 = () -> { System.out.println(toString()); }
-  	public String toString() {  return "Hello, world"; }
+    
+  	public String toString() {
+        return "Hello, world";
+    }
+    
   	public static void main(String... args) {
     		new Hello().r1.run();
     		new Hello().r2.run();
@@ -115,7 +120,7 @@ public class Hello {
 
 ### 函数式接口（Functional Interface）
 
->  是指指只有一个抽象方法的接口。（默认实现不算）
+>  是指只有一个抽象方法的接口。（默认实现不算）
 
 #### Java8内置函数式接口(java.util.function)
 - **Predicate**：boolean test(T t);
@@ -246,8 +251,7 @@ integers.forEach(i -> {
     try {
         System.out.println(50 / i);
     } catch (ArithmeticException e) {
-        System.err.println(
-          "Arithmetic Exception occured : " + e.getMessage());
+        System.err.println("Arithmetic Exception occured : " + e.getMessage());
     }
 });
 ```
@@ -258,8 +262,7 @@ static Consumer<Integer> lambdaWrapper(Consumer<Integer> consumer) {
         try {
             consumer.accept(i);
         } catch (ArithmeticException e) {
-            System.err.println(
-              "Arithmetic Exception occured : " + e.getMessage());
+            System.err.println("Arithmetic Exception occured : " + e.getMessage());
         }
     };
 }
@@ -270,8 +273,8 @@ integers.forEach(lambdaWrapper(i -> System.out.println(50 / i)));
 
 
 ## Stream
-Stream 是什么？
-a sequence of elements from a source that supports data processing operations.
+Stream 是什么？  
+a sequence of elements from a source that supports data processing operations.  
 支持（集合、数组或者I/O）数据处理操作的一系列元素
 
 ### 示例
@@ -331,11 +334,10 @@ public class StreamTest {
     public static void main(String[] args) {
         List<Dish> menu = getData();
         // 操作...
-        
     }
 }
 ```
-获取卡路里小于400的食物名称  - 使用串行流
+获取卡路里小于400的食物名称（ 使用串行流）
 ```java
 List<String> lowCaloricDishesName = 
         // stream()
@@ -366,7 +368,7 @@ System.out.println(lowCaloricDishesName);
 // [season fruit, prawns, rice]
 ```
 
-获取卡路里小于400的食物名称 - 使用并行流
+获取卡路里小于400的食物名称（使用并行流）
 ```java
 List<String> lowCaloricDishesName = 
         // parallelStream() 底层使用了 ForkJoin 框架
@@ -427,33 +429,44 @@ void test3(){
 
 1. Intermediate
 
-    * map (mapToInt, flatMap 等): 类型转换。接收一个函数作为参数，该函数会被应用到每个元素上，并将其映射成一个新的元素。
-    * flatMap: 接收一个函数作为参数，将流中的每个值都换成另一个流，然后把所有流生成一个流。
-    * filter: 筛选出符合条件的元素
-    * distinct: 筛选，通过生成元素的`hashCode()`和`equals()`，去除重复元素。
-    * sorted: 自然顺序排序，如果该流的元件不是Comparable，抛出java.lang.ClassCastException
-    * peek: 窥视，这种方法主要存在于支持调试
-    * limit(n): 截断流，使其元素不超过给定数量
-    * skip(n): 跳过元素，返回一个扔掉前n个元素的流，若不足n个，则返回一个空流。与`limit(n)`互补。
-    * parallel: 
-    * sequential
-    * unordered
+    * map (mapToInt, flatMap 等)： 类型转换。接收一个函数作为参数，该函数会被应用到每个元素上，并将其映射成一个新的元素。
+    * flatMap：接收一个函数作为参数，将流中的每个值都换成另一个流，然后把所有流生成一个流。
+    * filter：筛选出符合条件的元素
+    * distinct：筛选，通过生成元素的`hashCode()`和`equals()`，去除重复元素。
+    * sorted：自然顺序排序，如果该流的元件不是Comparable，抛出java.lang.ClassCastException
+    * peek：窥视，这种方法主要存在于支持调试
+    * limit(n)：截断流，使其元素不超过给定数量
+    * skip(n)：跳过元素，返回一个扔掉前n个元素的流，若不足n个，则返回一个空流。与`limit(n)`互补。
+    * parallel：返回一个并行流
+    * sequential：返回一个串行流
+    * unordered：返回一个无序流
 
 1. Terminal
 
-    * forEach: 遍历
-    * toArray: 转数组
-    * reduce: 可以将流中元素反复结合起来，得到一个值。
-    * collect: 将流转化为其他形式。接收一个`Collector`接口的实现。用于给`Stream`中元素做汇总的方法。
-    * min: 返回流中最小值
-    * max: 返回流中最大值
-    * count: 返回流中元素的总数
-    * anyMatch: 检查是否至少匹配一个元素
-    * allMatch: 检查是否匹配所有元素
-    * noneMatch: 检查是否所有元素都不匹配
-    * findFirst: 返回第一个元素
-    * findAny: 返回当前流中的任意元素
-    
+    * forEach：遍历
+    * toArray：转数组
+    * reduce：可以将流中元素反复结合起来，得到一个值。
+    * collect：将流转化为其他形式。接收一个`Collector`接口的实现。用于给`Stream`中元素做汇总的方法。
+    * min：返回流中最小值
+    * max：返回流中最大值
+    * count：返回流中元素的总数
+    * anyMatch：检查是否至少匹配一个元素
+    * allMatch：检查是否匹配所有元素
+    * noneMatch：检查是否所有元素都不匹配
+    * findFirst：返回第一个元素
+    * findAny：返回当前流中的任意元素
+
+```java
+// sequential 与 parallel
+Stream<Integer> s = Stream.of(1, 2, 3, 4);
+System.out.println(s.isParallel()); // false
+
+s = s.parallel();
+System.out.println(s.isParallel()); // true
+
+s = s.sequential();
+System.out.println(s.isParallel()); // false
+```
 
 ### 示例
 #### list 转 map
@@ -461,7 +474,8 @@ void test3(){
 public static void mapTest() {
     List<Dish> menu = getData();
     // list 转 map
-    menu.stream().collect(Collectors.toMap(Dish::getName, Dish::getCalories, (k1, k2) -> k1)).forEach((k, v) -> System.out.printf("k: %s, v: %d \n", k, v));
+    menu.stream().collect(Collectors.toMap(Dish::getName, Dish::getCalories, (k1, k2) -> k1))
+        .forEach((k, v) -> System.out.printf("k: %s, v: %d \n", k, v));
     // k: season fruit, v: 120
     // k: chicken, v: 400
     // k: pizza, v: 550
@@ -489,11 +503,10 @@ public static void groupTest() {
         String isVegetarian = vegetarian ? "yes" : "no";
         // 当前组菜单名称
         String names = list.stream().map(Dish::getName).collect(Collectors.joining(","));
-       // 当前组卡路里总和
-//int allCalories = list.stream().map(Dish::getCalories).reduce(Integer::sum).orElse(0);
+        // 当前组卡路里总和
+		//int allCalories = list.stream().map(Dish::getCalories).reduce(Integer::sum).orElse(0);
         int allCalories = list.stream().mapToInt(Dish::getCalories).sum();
-        System.out.printf("is vegetarian ? %s, they are %s, full calories is %d \n", 
-            isVegetarian, names, allCalories);
+        System.out.printf("is vegetarian ? %s, they are %s, full calories is %d \n", isVegetarian, names, allCalories);
     });
     // is vegetarian ? no, they are pork,beef,chicken,prawns,salmon. sum calories is 2650
     // is vegetarian ? yes, they are french fries,rice,season fruit,pizza. sum calories is 1550
@@ -505,8 +518,7 @@ public static void groupTest2() {
     List<Dish> menu = getData();
     // 求素菜与荤菜的卡路里总和
     Map<Boolean, Integer> vegetarianSum = menu.stream()
-    		.collect(Collectors.groupingBy(Dish::isVegetarian,
-             Collectors.summingInt(Dish::getCalories)));
+    		.collect(Collectors.groupingBy(Dish::isVegetarian, Collectors.summingInt(Dish::getCalories)));
     // 遍历
     vegetarianSum.forEach((vegetarian, sum) -> {
         // 当前组是否是 素菜
@@ -523,8 +535,7 @@ public static void groupTest3() {
     List<Dish> menu = getData();
     // 求素菜与荤菜的卡路里总和 平均值...
     Map<Boolean, IntSummaryStatistics> vegetarianGroup = menu.stream()
-            .collect(Collectors.groupingBy(Dish::isVegetarian,
-                  Collectors.summarizingInt(Dish::getCalories)));
+            .collect(Collectors.groupingBy(Dish::isVegetarian, Collectors.summarizingInt(Dish::getCalories)));
     // 遍历
     vegetarianGroup.forEach((vegetarian, statistics) -> {
         // 当前组是否是 素菜
@@ -559,16 +570,16 @@ public static void sortTest() {
 
 ## 新的日期时间 API
 ### 认识新的日期API类
-- Instant         时间戳
-- Duration        持续时间、时间差
-- LocalDate       只包含日期，比如：2018-09-24
-- LocalTime       只包含时间，比如：10:32:10
-- LocalDateTime   包含日期和时间，比如：2018-09-24 10:32:10
-- Peroid          时间段
-- ZoneOffset      时区偏移量，比如：+8:00
-- ZonedDateTime   带时区的日期时间
-- Clock           时钟，可用于获取当前时间戳
-- java.time.format.DateTimeFormatter      时间格式化类
+- Instant：时间戳
+- Duration：持续时间、时间差
+- LocalDate：只包含日期，比如：2020-08-01
+- LocalTime：只包含时间，比如：10:32:10
+- LocalDateTime：包含日期和时间，比如：2020-08-01 10:32:10
+- Peroid：时间段
+- ZoneOffset：时区偏移量，比如：+8:00
+- ZonedDateTime：带时区的日期时间
+- Clock：时钟，可用于获取当前时间戳
+- java.time.format.DateTimeFormatter：时间格式化类
 
 #### 构造
 
@@ -585,6 +596,8 @@ public static void main(String[] args) {
 #### 时间推移
 ```java
 public static void main(String[] args) {
+    // 当前时间
+    System.out.println(LocalDate.now()); // 2020-08-01
     // 当前时间向后推一个月零4天
     System.out.println(LocalDate.now().plusMonths(1).plusDays(4)); // 2020-09-05
 }
@@ -593,7 +606,7 @@ public static void main(String[] args) {
 ```java
 public static void main(String[] args) {
     // 上海时间
-    ZoneId shanghaiZoneId = ZoneId.of("Asia/Shanghai");
+    ZoneId shanghaiZoneId = ZoneId.of("Asia/Shanghai");// 时区参数参照：java.time.ZoneId#SHORT_IDS
     ZonedDateTime shanghaiZonedDateTime = ZonedDateTime.now(shanghaiZoneId);
     // 东京时间
     ZoneId tokyoZoneId = ZoneId.of("Asia/Tokyo");
@@ -618,13 +631,11 @@ public static void main(String[] args) {
 ```java
 public static void main(String[] args) {
     // 方法一：
-    LocalDateTime localDateTime = new Date().toInstant()
-      	.atZone(ZoneId.systemDefault()).toLocalDateTime();
+    LocalDateTime localDateTime = new Date().toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime();
     System.out.println(localDateTime); // 2020-08-01T00:47:15.327
     
     // 方法二：
-    LocalDateTime localDateTime1 = LocalDateTime
-      		.ofInstant(new Date().toInstant(), ZoneId.systemDefault());
+    LocalDateTime localDateTime1 = LocalDateTime.ofInstant(new Date().toInstant(), ZoneId.systemDefault());
     System.out.println(localDateTime1); // 2020-08-01T00:47:15.327
 }
 ```
@@ -648,3 +659,7 @@ Optional类是一个容器类，代表一个值存在或不存在，原来用nul
 7. map(Function f)——如果有值对其处理，并返回处理后的Optional，否则返回Optional.empty()
 8. flatMap(Function mapper)——与map类似，要求返回值必须是Optional
 
+```java
+Integer i = null;
+System.out.println(Optional.ofNullable(i).orElse(0));
+```
