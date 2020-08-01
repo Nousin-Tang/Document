@@ -18,11 +18,11 @@
 `spring created:>YYYY-MM-DD` 搜索创建时间在YYYY-MM-DD之后关键字为spring的项目  
 `spring pushed:>YYYY-MM-DD` 搜索推送时间在YYYY-MM-DD之后关键字为spring的项目  
 
-`spring in:name` 表示在项目名称中搜索 qt 关键字  
-`spring in:readme` 表示在项目readme中搜索 qt 关键字  
-`spring in:description` 表示在 项目描述中搜索 qt 关键字  
-`spring in:USERNAME` 表示在USERNAME中搜索 qt 关键字  
-`spring in:ORGNAME` 表示在组织或机构名中搜索 qt 关键字  
+`spring in:name` 表示在项目名称中搜索 spring 关键字  
+`spring in:readme` 表示在项目readme中搜索 spring 关键字  
+`spring in:description` 表示在 项目描述中搜索 spring 关键字  
+`spring in:USERNAME` 表示在USERNAME中搜索 spring 关键字  
+`spring in:ORGNAME` 表示在组织或机构名中搜索 spring 关键字  
 
 
 
