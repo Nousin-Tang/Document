@@ -444,6 +444,7 @@ void test3(){
 1. Terminal
 
     * forEach：遍历
+    * forEachOrdered：按（原始数据）顺序遍历
     * toArray：转数组
     * reduce：可以将流中元素反复结合起来，得到一个值。
     * collect：将流转化为其他形式。接收一个`Collector`接口的实现。用于给`Stream`中元素做汇总的方法。
@@ -466,6 +467,66 @@ System.out.println(s.isParallel()); // true
 
 s = s.sequential();
 System.out.println(s.isParallel()); // false
+```
+
+使用 `parallelStream` 注意事项
+```java
+List<Integer> listOfIntegers = new ArrayList<Integer>(){{ addAll(Arrays.asList(1, 6, 7, 8, 2, 3, 4, 5));}};
+List<Integer> parallelStorage = new ArrayList<>();
+listOfIntegers.parallelStream()
+    // Don't do this! It uses a stateful lambda expression.
+    .map(e -> {
+        // System.out.printf("线程 %s, 消费：%d \n", Thread.currentThread().getName(), e);
+        parallelStorage.add(e);
+        return e;
+    }).forEachOrdered(e -> System.out.printf("=== 打印元素：%d \n", e));
+System.out.println();
+parallelStorage.stream().forEachOrdered(e -> System.out.printf("*** 打印元素：%d \n", e));
+System.out.println();
+// 原始数据打印结果：
+// === 打印元素：1 
+// === 打印元素：6 
+// === 打印元素：7 
+// === 打印元素：8 
+// === 打印元素：2 
+// === 打印元素：3 
+// === 打印元素：4 
+// === 打印元素：5 
+// 结果1（出现空值）：
+// *** 打印元素：null 
+// *** 打印元素：null 
+// *** 打印元素：null 
+// *** 打印元素：8 
+// *** 打印元素：2 
+// *** 打印元素：1 
+// *** 打印元素：5 
+// *** 打印元素：4 
+// 结果2（只有七个元素）：
+// *** 打印元素：3 
+// *** 打印元素：2 
+// *** 打印元素：4 
+// *** 打印元素：5 
+// *** 打印元素：6 
+// *** 打印元素：8 
+// *** 打印元素：1 
+
+// ArrayList 源码
+/**
+  * Appends the specified element to the end of this list.
+  *
+  * @param e element to be appended to this list
+  * @return <tt>true</tt> (as specified by {@link Collection#add})
+  */
+public boolean add(E e) {
+    // 进行扩容 
+    // 底层方法：elementData = Arrays.copyOf(elementData, newCapacity);
+    ensureCapacityInternal(size + 1);  
+    elementData[size++] = e; // 添加元素（size同时被几个线程修改就可能出现null的数据）
+    return true;
+}
+
+// 解决办法
+List<Integer> parallelStorage = Collections.synchronizedList(new ArrayList<>());
 ```
 
 ### 示例
