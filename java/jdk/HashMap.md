@@ -26,8 +26,7 @@ Hash的特点：
 由于hash的原理是将***输入空间***的值映射成***hash空间***内，而hash值的空间远小于输入的空间。
 根据***抽屉原理***，一定会存在不同的输入被映射成相同输出的情况。
 
-抽屉原理：桌上有十个苹果，要把这十个苹果放到九个抽屉里，无论怎样放，我们会发现至少会有一个抽屉里面放不少于两个苹果。
-                  这一现象就是我们所说的“抽屉原理”。
+抽屉原理：桌上有十个苹果，要把这十个苹果放到九个抽屉里，无论怎样放，我们会发现至少会有一个抽屉里面放不少于两个苹果。这一现象就是我们所说的“抽屉原理”。
 
 ## HashMap 知识准备
 1. HashMap -- 继承 --> AbstractMap  -- 实现 --> Map接口
@@ -327,6 +326,7 @@ final float loadFactor;
 
 ![HashMap底层存储结构](#../../images/HashMap底层存储结构.png)
 
+
 ## 源码分析
 
 ### 构造函数分析
@@ -420,7 +420,8 @@ public V put(K key, V value) {
     return putVal(hash(key), key, value, false, true);
 }
 ```
-hash 方法
+#### hash 方法
+
 ```java
 /**
  * Computes key.hashCode() and spreads (XORs) higher bits of hash
@@ -453,7 +454,8 @@ static final int hash(Object key) {
 }
 ```
 
-核心方法
+#### **put 核心方法**
+
 ```java
 /**
  * Implements Map.put and related methods.
@@ -465,8 +467,7 @@ static final int hash(Object key) {
  * @param evict if false, the table is in creation mode.
  * @return previous value, or null if none
  */
-final V putVal(int hash, K key, V value, boolean onlyIfAbsent,
-               boolean evict) {
+final V putVal(int hash, K key, V value, boolean onlyIfAbsent, boolean evict) {
     // tab：引用当前hashMap的散列表
     // p：表示当前散列表的元素
     // n：表示散列表数组的长度
@@ -534,7 +535,7 @@ final V putVal(int hash, K key, V value, boolean onlyIfAbsent,
 }
 ```
 
-### resize 扩容方法分析
+### **resize 扩容方法分析**
 
 ```java
 /**
@@ -567,7 +568,6 @@ final Node<K,V>[] resize() {
             threshold = Integer.MAX_VALUE;
             return oldTab;
         }
-
         // oldCap左移一位实现数值翻倍，并且赋值给newCap， 
       	// newCap 小于数组最大值限制 且 扩容之前的阈值 >= 16
         // 这种情况下，则 下一次扩容的阈值 等于当前阈值翻倍
@@ -575,7 +575,6 @@ final Node<K,V>[] resize() {
                 oldCap >= DEFAULT_INITIAL_CAPACITY)
             newThr = oldThr << 1; // double threshold
     }
-
     // oldCap == 0,说明hashMap中的散列表是null
     // 1.new HashMap(initCap, loadFactor);
     // 2.new HashMap(initCap);
@@ -587,7 +586,7 @@ final Node<K,V>[] resize() {
     // new HashMap();
     else {               // zero initial threshold signifies using defaults
         newCap = DEFAULT_INITIAL_CAPACITY;//16
-        newThr = (int)(DEFAULT_LOAD_FACTOR * DEFAULT_INITIAL_CAPACITY);//12
+        newThr = (int)(DEFAULT_LOAD_FACTOR * DEFAULT_INITIAL_CAPACITY);//0.75*16=12
     }
 
     // newThr为零时，通过 newCap 和 loadFactor 计算出一个 newThr
@@ -643,8 +642,7 @@ final Node<K,V>[] resize() {
                             else
                                 loTail.next = e;
                             loTail = e;
-                        }
-                        else {
+                        } else {
                             if (hiTail == null)
                                 hiHead = e;
                             else
@@ -671,13 +669,190 @@ final Node<K,V>[] resize() {
 }
 ```
 
-
-
 ### get 方法分析
 
+```java
+/**
+ * Returns the value to which the specified key is mapped,
+ * or {@code null} if this map contains no mapping for the key.
+ *
+ * <p>More formally, if this map contains a mapping from a key
+ * {@code k} to a value {@code v} such that {@code (key==null ? k==null :
+ * key.equals(k))}, then this method returns {@code v}; otherwise
+ * it returns {@code null}.  (There can be at most one such mapping.)
+ *
+ * <p>A return value of {@code null} does not <i>necessarily</i>
+ * indicate that the map contains no mapping for the key; it's also
+ * possible that the map explicitly maps the key to {@code null}.
+ * The {@link #containsKey containsKey} operation may be used to
+ * distinguish these two cases.
+ *
+ * @see #put(Object, Object)
+ */
+public V get(Object key) {
+  Node<K,V> e;
+  return (e = getNode(hash(key), key)) == null ? null : e.value;
+}
 
+/**
+ * Implements Map.get and related methods.
+ *
+ * @param hash hash for key
+ * @param key the key
+ * @return the node, or null if none
+ */
+final Node<K,V> getNode(int hash, Object key) {
+  // tab：引用当前hashMap的散列表
+  // first：桶位中的头元素
+  // e：临时node元素
+  // n：table数组长度
+  Node<K,V>[] tab; Node<K,V> first, e; int n; K k;
+
+  if ((tab = table) != null && (n = tab.length) > 0 &&
+      (first = tab[(n - 1) & hash]) != null) {
+    // 第一种情况：定位出来的桶位元素 即为咱们要get的数据
+    if (first.hash == hash && // always check first node
+        ((k = first.key) == key || (key != null && key.equals(k))))
+      return first;
+
+    // 说明当前桶位不止一个元素，可能 是链表 也可能是 红黑树
+    if ((e = first.next) != null) {
+      //第二种情况：桶位升级成了 红黑树
+      if (first instanceof TreeNode)//下一期说
+        return ((TreeNode<K,V>)first).getTreeNode(hash, key);
+      //第三种情况：桶位形成链表
+      do {
+        if (e.hash == hash &&
+            ((k = e.key) == key || (key != null && key.equals(k))))
+          return e;
+
+      } while ((e = e.next) != null);
+    }
+  }
+  return null;
+}
+```
 
 ### remove 方法分析
 
+```java
+/**
+ * Removes the mapping for the specified key from this map if present.
+ *
+ * @param  key key whose mapping is to be removed from the map
+ * @return the previous value associated with <tt>key</tt>, or
+ *         <tt>null</tt> if there was no mapping for <tt>key</tt>.
+ *         (A <tt>null</tt> return can also indicate that the map
+ *         previously associated <tt>null</tt> with <tt>key</tt>.)
+ */
+public V remove(Object key) {
+  Node<K,V> e;
+  return (e = removeNode(hash(key), key, null, false, true)) == null ? null : e.value;
+}
+
+/**
+ * Implements Map.remove and related methods.
+ *
+ * @param hash hash for key
+ * @param key the key
+ * @param value the value to match if matchValue, else ignored
+ * @param matchValue if true only remove if value is equal
+ * @param movable if false do not move other nodes while removing
+ * @return the node, or null if none
+ */
+final Node<K,V> removeNode(int hash, Object key, Object value,
+                           boolean matchValue, boolean movable) {
+  // tab：引用当前hashMap中的散列表
+  // p：当前node元素
+  // n：表示散列表数组长度
+  // index：表示寻址结果
+  Node<K,V>[] tab; Node<K,V> p; int n, index;
+
+  if ((tab = table) != null && (n = tab.length) > 0 &&
+      (p = tab[index = (n - 1) & hash]) != null) {
+    // 说明路由的桶位是有数据的，需要进行查找操作，并且删除
+
+    // node：查找到的结果
+    // e：当前Node的下一个元素
+    Node<K,V> node = null, e; K k; V v;
+
+    // 第一种情况：当前桶位中的元素 即为 你要删除的元素
+    if (p.hash == hash &&
+        ((k = p.key) == key || (key != null && key.equals(k))))
+      node = p;
+
+    else if ((e = p.next) != null) {
+      // 说明，当前桶位 要么是 链表 要么 是红黑树
+
+      if (p instanceof TreeNode)//判断当前桶位是否升级为 红黑树了
+        // 第二种情况，红黑树查找操作
+        node = ((TreeNode<K,V>)p).getTreeNode(hash, key);
+      else {
+        // 第三种情况，链表的情况
+        do {
+          if (e.hash == hash &&
+              ((k = e.key) == key ||
+               (key != null && key.equals(k)))) {
+            node = e;
+            break;
+          }
+          p = e;
+        } while ((e = e.next) != null);
+      }
+    }
+
+    //判断node不为空的话，说明按照key查找到需要删除的数据了
+    if (node != null && (!matchValue || (v = node.value) == value ||
+                         (value != null && value.equals(v)))) {
+
+      //第一种情况：node是树节点，说明需要进行树节点移除操作
+      if (node instanceof TreeNode)
+        ((TreeNode<K,V>)node).removeTreeNode(this, tab, movable);
+
+      //第二种情况：桶位元素即为查找结果，则将该元素的下一个元素放至桶位中
+      else if (node == p)
+        tab[index] = node.next;
+
+      else
+        //第三种情况：将当前元素p的下一个元素 设置成 要删除元素的 下一个元素。
+        p.next = node.next;
+
+      ++modCount;
+      --size;
+      afterNodeRemoval(node);
+      return node;
+    }
+  }
+  return null;
+}
+```
+
 
 ### replace 方法分析
+
+```java
+@Override
+public boolean replace(K key, V oldValue, V newValue) {
+  Node<K,V> e; V v;
+  if ((e = getNode(hash(key), key)) != null &&
+      ((v = e.value) == oldValue || (v != null && v.equals(oldValue)))) {
+    e.value = newValue;
+    afterNodeAccess(e);
+    return true;
+  }
+  return false;
+}
+
+@Override
+public V replace(K key, V value) {
+  Node<K,V> e;
+  if ((e = getNode(hash(key), key)) != null) {
+    V oldValue = e.value;
+    e.value = value;
+    afterNodeAccess(e);
+    return oldValue;
+  }
+  return null;
+}
+```
+
