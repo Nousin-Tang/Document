@@ -31,11 +31,34 @@ Hash的特点：
 ## HashMap 知识准备
 1. HashMap -- 继承 --> AbstractMap  -- 实现 --> Map接口
 
+```mermaid
+classDiagram
+    Map <|.. AbstractMap
+  	AbstractMap <|-- HashMap
+  	
+  	class Map{
+        get(Object obj) ~V~ 
+        put(K key, V value) ~V~
+    }
+    
+  	class AbstractMap{
+        get(Object obj) ~V~ 
+        put(K key, V value) ~V~
+    }
+    
+  	class HashMap~K~{
+        int MAXIMUM_CAPACITY = 1 << 30;
+        float DEFAULT_LOAD_FACTOR = 0.75f;
+        get(Object obj) ~V~ 
+        put(K key, V value) ~V~
+    }
+```
+
 2. HashMap 中的 Node 数据结构
 ```java
 /**
  * Basic hash bin node, used for most entries.  (See below for
- * TreeNode subclass, and in LinkedHashMap for its Entry subclass.)
+ * TreeNode subclass, and in LinkedHashMap for its Entry subclass.
  */
 static class Node<K,V> implements Map.Entry<K,V> {
   final int hash; // 经过 Hash 算法后计算出来的值
@@ -53,7 +76,7 @@ static class Node<K,V> implements Map.Entry<K,V> {
   public final K getKey()        { return key; }
   public final V getValue()      { return value; }
   public final String toString() { return key + "=" + value; }
-
+  // Key 的 hash 值与 value 的 hash 值 取异或值
   public final int hashCode() {
     return Objects.hashCode(key) ^ Objects.hashCode(value);
   }
@@ -63,7 +86,7 @@ static class Node<K,V> implements Map.Entry<K,V> {
     value = newValue;
     return oldValue;
   }
-
+  // 地址相同 或 key 与 value 都相同（Object.equals方法） 则 equals 返回 true
   public final boolean equals(Object o) {
     if (o == this)
       return true;
@@ -81,9 +104,8 @@ static class Node<K,V> implements Map.Entry<K,V> {
 
 ```java
 /**
- * A map entry (key-value pair).  The <tt>Map.entrySet</tt> method returns
- * a collection-view of the map, whose elements are of this class.  The
- * <i>only</i> way to obtain a refer
+ * 表示一个映射项（键 - 值对）。 该Map.entrySet方法返回该类的集合视图映射。 
+ * 获得对映射项的参照的唯一方法是从该集合中视点的迭代器中获取。
  */
 interface Entry<K,V> {
     /**
@@ -162,7 +184,7 @@ interface Entry<K,V> {
 static final int DEFAULT_INITIAL_CAPACITY = 1 << 4; // aka 16
 
 /**
- * 最大容量大小
+ * 最大容量大小（10亿多）
  */
 static final int MAXIMUM_CAPACITY = 1 << 30; // 1073741824
 
@@ -196,8 +218,7 @@ static final int UNTREEIFY_THRESHOLD = 6;
 transient HashMap.Node<K,V>[] table;
 
 /**
- * Holds cached entrySet(). Note that AbstractMap fields are used
- * for keySet() and values().
+ * Holds cached entrySet(). Note that AbstractMap fields are used for keySet() and values().
  */
 transient Set<Map.Entry<K,V>> entrySet;
 
@@ -221,7 +242,7 @@ int threshold;
  */
 final float loadFactor;
 ```
-
+> 将不需要序列化的属性前添加关键字transient，序列化对象的时候，这个属性就不会被序列化。
 6. 哈希表结构图
 
 ![HashMap底层存储结构](#../../images/HashMap底层存储结构.png)
@@ -235,8 +256,7 @@ final float loadFactor;
 
 ```java
 /**
- * Constructs an empty <tt>HashMap</tt> with the specified initial
- * capacity and load factor.
+ * 用指定的初始容量和负载因子构造一个空的
  *
  * @param  initialCapacity the initial capacity
  * @param  loadFactor      the load factor
@@ -244,29 +264,26 @@ final float loadFactor;
  *         or the load factor is nonpositive
  */
 public HashMap(int initialCapacity, float loadFactor) {
-
     // 其实就是做了一些校验
-    // capacity必须是大于0 ，最大值也就是 MAX_CAP
+    // capacity 必须是大于等于 0 ，最大值也就是 MAXIMUM_CAPACITY
     if (initialCapacity < 0)
-        throw new IllegalArgumentException("Illegal initial capacity: " +
-                initialCapacity);
+        throw new IllegalArgumentException("Illegal initial capacity: " + initialCapacity);
     if (initialCapacity > MAXIMUM_CAPACITY)
         initialCapacity = MAXIMUM_CAPACITY;
 
-    // loadFactor必须大于0
+    // loadFactor 必须大于 0 的小数
     if (loadFactor <= 0 || Float.isNaN(loadFactor))
-        throw new IllegalArgumentException("Illegal load factor: " +
-                loadFactor);
-
+        throw new IllegalArgumentException("Illegal load factor: " + loadFactor);
+  
     this.loadFactor = loadFactor;
+  	// 返回一个大于等于当前值 cap 的一个最小2次幂数
     this.threshold = tableSizeFor(initialCapacity);
 }
 ```
 
 ```java
 /**
- * Returns a power of two size for the given target capacity.
- * 作用：返回一个大于等于当前值cap的一个数字，并且这个数字一定是2的次方数
+ * 返回一个大于等于当前值 cap 的一个最小2次幂数
  *
  * cap = 10
  * n = 10 - 1 => 9
@@ -277,7 +294,6 @@ public HashMap(int initialCapacity, float loadFactor) {
  * 0b1111 => 15
  *
  * return 15 + 1;
- * 
  * 
  * 若 int n = cap - 1; 变成 int n = cap; 可能造成容量扩大一倍。
  * cap = 16
@@ -305,16 +321,7 @@ static final int tableSizeFor(int cap) {
 ### put 方法分析
 ```java
 /**
- * Associates the specified value with the specified key in this map.
- * If the map previously contained a mapping for the key, the old
- * value is replaced.
- *
- * @param key key with which the specified value is to be associated
- * @param value value to be associated with the specified key
- * @return the previous value associated with <tt>key</tt>, or
- *         <tt>null</tt> if there was no mapping for <tt>key</tt>.
- *         (A <tt>null</tt> return can also indicate that the map
- *         previously associated <tt>null</tt> with <tt>key</tt>.)
+ * 在 map 中将 key 与 value 进行关联映射，如果 key 已经存在则替换旧值，并返回旧值，若旧值不存在则返回 null。
  */
 public V put(K key, V value) {
     return putVal(hash(key), key, value, false, true);
@@ -324,21 +331,6 @@ public V put(K key, V value) {
 
 ```java
 /**
- * Computes key.hashCode() and spreads (XORs) higher bits of hash
- * to lower.  Because the table uses power-of-two masking, sets of
- * hashes that vary only in bits above the current mask will
- * always collide. (Among known examples are sets of Float keys
- * holding consecutive whole numbers in small tables.)  So we
- * apply a transform that spreads the impact of higher bits
- * downward. There is a tradeoff between speed, utility, and
- * quality of bit-spreading. Because many common sets of hashes
- * are already reasonably distributed (so don't benefit from
- * spreading), and because we use trees to handle large sets of
- * collisions in bins, we just XOR some shifted bits in the
- * cheapest possible way to reduce systematic lossage, as well as
- * to incorporate impact of the highest bits that would otherwise
- * never be used in index calculations because of table bounds.
- *
  * 作用：让key的hash值的高16位也参与路由运算
  * 异或：相同则返回0，不同返回1
  *
@@ -358,14 +350,10 @@ static final int hash(Object key) {
 
 ```java
 /**
- * Implements Map.put and related methods.
- *
- * @param hash hash for key
- * @param key the key
- * @param value the value to put
- * @param onlyIfAbsent if true, don't change existing value
- * @param evict if false, the table is in creation mode.
- * @return previous value, or null if none
+ * 实现 Map.put 和相关的方法
+ * @param onlyIfAbsent 为 true 不改变现有的 value
+ * @param evict 为 false 散列表为创建模式.
+ * @return 返回旧值，若旧值不存在则返回 null
  */
 final V putVal(int hash, K key, V value, boolean onlyIfAbsent, boolean evict) {
     // tab：引用当前hashMap的散列表
@@ -381,15 +369,15 @@ final V putVal(int hash, K key, V value, boolean onlyIfAbsent, boolean evict) {
     // 最简单的一种情况：寻址找到的桶位 刚好是 null，这个时候，直接将当前 k-v=>node 扔进去就可以了
     if ((p = tab[i = (n - 1) & hash]) == null)
         tab[i] = newNode(hash, key, value, null);
-
+	// p 不为空，当前要插入的 key-value 的 key 的 hash 值存在冲突
+  	// 则当前的 p 是个链表（一个或多个元素）或者是红黑树
     else {
         // e：不为null的话，找到了一个与当前要插入的 key-value 一致的key的元素
         // k：表示临时的一个key
         Node<K,V> e; K k;
 
-        // 表示桶位中的该元素，与你当前插入的元素的key完全一致，表示后续需要进行替换操作
-        if (p.hash == hash &&
-                ((k = p.key) == key || (key != null && key.equals(k))))
+        // 表示桶位中的该元素与你当前插入的元素的key完全一致，后续需要进行替换操作
+        if (p.hash == hash && ((k = p.key) == key || (key != null && key.equals(k))))
             e = p;
 				// 红黑树
         else if (p instanceof TreeNode)
@@ -434,6 +422,7 @@ final V putVal(int hash, K key, V value, boolean onlyIfAbsent, boolean evict) {
     return null;
 }
 ```
+> 寻址方法：`(n - 1) & hash`
 
 ### **resize 扩容方法分析**
 
