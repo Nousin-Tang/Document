@@ -33,7 +33,7 @@ Hash的特点：
 
 ```mermaid
 classDiagram
-    Map <|.. AbstractMap
+    Map <.. AbstractMap
   	AbstractMap <|-- HashMap
   	
   	class Map{
@@ -252,7 +252,7 @@ final float loadFactor;
 
 ### 构造函数分析
 
-1. 两个参数
+1. 两个参数构造器
 
 ```java
 /**
@@ -318,6 +318,48 @@ static final int tableSizeFor(int cap) {
 }
 ```
 
+2. 一个初始化容量参数
+```java
+/**
+ * 给定容量，新建一个空的 HashMap（默认负载因子是0.75）（套用两参数构造器）
+ * 
+ * @param  initialCapacity the initial capacity.
+ * @throws IllegalArgumentException if the initial capacity is negative.
+ */
+public HashMap(int initialCapacity) {
+    this(initialCapacity, DEFAULT_LOAD_FACTOR);
+}
+
+```
+
+3. 空参数
+```java
+/**
+ * 新建一个空的 HashMap（初始化容量是16，负载因子是0.75）
+ */
+public HashMap() {
+    this.loadFactor = DEFAULT_LOAD_FACTOR; // all other fields defaulted
+}
+```
+
+4. Map集合构造器
+```java
+/**
+ * 新建一个与 m 具有相同映射关系且容量足够的新的 HahsMap （默认负载因子是0.75）
+ *
+ * @param   m the map whose mappings are to be placed in this map
+ * @throws  NullPointerException if the specified map is null
+ */
+public HashMap(Map<? extends K, ? extends V> m) {
+    this.loadFactor = DEFAULT_LOAD_FACTOR;
+    putMapEntries(m, false);
+}
+
+
+```
+
+
+
 ### put 方法分析
 ```java
 /**
@@ -369,7 +411,7 @@ final V putVal(int hash, K key, V value, boolean onlyIfAbsent, boolean evict) {
     // 最简单的一种情况：寻址找到的桶位 刚好是 null，这个时候，直接将当前 k-v=>node 扔进去就可以了
     if ((p = tab[i = (n - 1) & hash]) == null)
         tab[i] = newNode(hash, key, value, null);
-	// p 不为空，当前要插入的 key-value 的 key 的 hash 值存在冲突
+	  // p 不为空，当前要插入的 key-value 的 key 的 hash 值存在冲突
   	// 则当前的 p 是个链表（一个或多个元素）或者是红黑树
     else {
         // e：不为null的话，找到了一个与当前要插入的 key-value 一致的key的元素
@@ -452,7 +494,7 @@ final Node<K,V>[] resize() {
 
     // 条件如果成立说明 hashMap中的散列表已经初始化过了，这是一次正常扩容
     if (oldCap > 0) {
-        // 扩容之前的table数组大小已经达到 最大阈值后，则不扩容，且设置扩容条件为 int 最大值。
+        // 扩容之前的table数组大小已经达到最大阈值后，则不扩容，且设置扩容条件为 int 最大值。
         if (oldCap >= MAXIMUM_CAPACITY) {
             threshold = Integer.MAX_VALUE;
             return oldTab;
@@ -475,7 +517,8 @@ final Node<K,V>[] resize() {
     // new HashMap();
     else {               // zero initial threshold signifies using defaults
         newCap = DEFAULT_INITIAL_CAPACITY;//16
-        newThr = (int)(DEFAULT_LOAD_FACTOR * DEFAULT_INITIAL_CAPACITY);//0.75*16=12
+        newThr = (int)(DEFAULT_LOAD_FACTOR * 
+                       DEFAULT_INITIAL_CAPACITY);//0.75*16=12
     }
 
     // newThr为零时，通过 newCap 和 loadFactor 计算出一个 newThr
@@ -579,8 +622,8 @@ final Node<K,V>[] resize() {
  * @see #put(Object, Object)
  */
 public V get(Object key) {
-  Node<K,V> e;
-  return (e = getNode(hash(key), key)) == null ? null : e.value;
+    Node<K,V> e;
+    return (e = getNode(hash(key), key)) == null ? null : e.value;
 }
 
 /**
@@ -591,34 +634,33 @@ public V get(Object key) {
  * @return the node, or null if none
  */
 final Node<K,V> getNode(int hash, Object key) {
-  // tab：引用当前hashMap的散列表
-  // first：桶位中的头元素
-  // e：临时node元素
-  // n：table数组长度
-  Node<K,V>[] tab; Node<K,V> first, e; int n; K k;
+    // tab：引用当前hashMap的散列表
+    // first：桶位中的头元素
+    // e：临时node元素
+    // n：table数组长度
+    Node<K,V>[] tab; Node<K,V> first, e; int n; K k;
 
-  if ((tab = table) != null && (n = tab.length) > 0 &&
-      (first = tab[(n - 1) & hash]) != null) {
-    // 第一种情况：定位出来的桶位元素 即为咱们要get的数据
-    if (first.hash == hash && // always check first node
-        ((k = first.key) == key || (key != null && key.equals(k))))
-      return first;
+    if ((tab = table) != null && (n = tab.length) > 0 &&
+        (first = tab[(n - 1) & hash]) != null) {
+        // 第一种情况：定位出来的桶位元素 即为咱们要get的数据
+        if (first.hash == hash && // always check first node
+            ((k = first.key) == key || (key != null && key.equals(k))))
+            return first;
 
-    // 说明当前桶位不止一个元素，可能 是链表 也可能是 红黑树
-    if ((e = first.next) != null) {
-      //第二种情况：桶位升级成了 红黑树
-      if (first instanceof TreeNode)//下一期说
-        return ((TreeNode<K,V>)first).getTreeNode(hash, key);
-      //第三种情况：桶位形成链表
-      do {
-        if (e.hash == hash &&
-            ((k = e.key) == key || (key != null && key.equals(k))))
-          return e;
-
-      } while ((e = e.next) != null);
+        // 说明当前桶位不止一个元素，可能 是链表 也可能是 红黑树
+        if ((e = first.next) != null) {
+            //第二种情况：桶位升级成了 红黑树
+            if (first instanceof TreeNode)//下一期说
+                return ((TreeNode<K,V>)first).getTreeNode(hash, key);
+            //第三种情况：桶位形成链表
+            do {
+                if (e.hash == hash &&
+                    ((k = e.key) == key || (key != null && key.equals(k))))
+                    return e;
+            } while ((e = e.next) != null);
+        }
     }
-  }
-  return null;
+    return null;
 }
 ```
 
@@ -635,8 +677,9 @@ final Node<K,V> getNode(int hash, Object key) {
  *         previously associated <tt>null</tt> with <tt>key</tt>.)
  */
 public V remove(Object key) {
-  Node<K,V> e;
-  return (e = removeNode(hash(key), key, null, false, true)) == null ? null : e.value;
+    Node<K,V> e;
+    return (e = removeNode(hash(key), key, null, false, true)) == null ? 
+        null : e.value;
 }
 
 /**
@@ -651,68 +694,63 @@ public V remove(Object key) {
  */
 final Node<K,V> removeNode(int hash, Object key, Object value,
                            boolean matchValue, boolean movable) {
-  // tab：引用当前hashMap中的散列表
-  // p：当前node元素
-  // n：表示散列表数组长度
-  // index：表示寻址结果
-  Node<K,V>[] tab; Node<K,V> p; int n, index;
+    // tab：引用当前hashMap中的散列表
+    // p：当前node元素
+    // n：表示散列表数组长度
+    // index：表示寻址结果
+    Node<K,V>[] tab; Node<K,V> p; int n, index;
 
-  if ((tab = table) != null && (n = tab.length) > 0 &&
-      (p = tab[index = (n - 1) & hash]) != null) {
-    // 说明路由的桶位是有数据的，需要进行查找操作，并且删除
+    if ((tab = table) != null && (n = tab.length) > 0 &&
+        (p = tab[index = (n - 1) & hash]) != null) {
+        // 说明路由的桶位是有数据的，需要进行查找操作，并且删除
 
-    // node：查找到的结果
-    // e：当前Node的下一个元素
-    Node<K,V> node = null, e; K k; V v;
+        // node：查找到的结果
+        // e：当前Node的下一个元素
+        Node<K,V> node = null, e; K k; V v;
 
-    // 第一种情况：当前桶位中的元素 即为 你要删除的元素
-    if (p.hash == hash &&
-        ((k = p.key) == key || (key != null && key.equals(k))))
-      node = p;
+        // 第一种情况：当前桶位中的元素 即为 你要删除的元素
+        if (p.hash == hash &&
+            ((k = p.key) == key || (key != null && key.equals(k))))
+            node = p;
 
-    else if ((e = p.next) != null) {
-      // 说明，当前桶位 要么是 链表 要么 是红黑树
+        else if ((e = p.next) != null) {
+            // 说明，当前桶位 要么是 链表 要么 是红黑树
 
-      if (p instanceof TreeNode)//判断当前桶位是否升级为 红黑树了
-        // 第二种情况，红黑树查找操作
-        node = ((TreeNode<K,V>)p).getTreeNode(hash, key);
-      else {
-        // 第三种情况，链表的情况
-        do {
-          if (e.hash == hash &&
-              ((k = e.key) == key ||
-               (key != null && key.equals(k)))) {
-            node = e;
-            break;
-          }
-          p = e;
-        } while ((e = e.next) != null);
-      }
+            if (p instanceof TreeNode)//判断当前桶位是否升级为 红黑树了
+                // 第二种情况，红黑树查找操作
+                node = ((TreeNode<K,V>)p).getTreeNode(hash, key);
+            else {
+                // 第三种情况，链表的情况
+                do {
+                  if (e.hash == hash &&
+                      ((k = e.key) == key ||
+                       (key != null && key.equals(k)))) {
+                    node = e;
+                    break;
+                  }
+                  p = e;
+                } while ((e = e.next) != null);
+            }
+        }
+        //判断node不为空的话，说明按照key查找到需要删除的数据了
+        if (node != null && (!matchValue || (v = node.value) == value ||
+                             (value != null && value.equals(v)))) {
+            //第一种情况：node是树节点，说明需要进行树节点移除操作
+            if (node instanceof TreeNode)
+                ((TreeNode<K,V>)node).removeTreeNode(this, tab, movable);
+            //第二种情况：桶位元素即为查找结果，则将该元素的下一个元素放至桶位中
+            else if (node == p)
+                tab[index] = node.next;
+            else
+                //第三种情况：将当前元素p的下一个元素 设置成 要删除元素的 下一个元素。
+                p.next = node.next;
+            ++modCount;
+            --size;
+            afterNodeRemoval(node);
+            return node;
+        }
     }
-
-    //判断node不为空的话，说明按照key查找到需要删除的数据了
-    if (node != null && (!matchValue || (v = node.value) == value ||
-                         (value != null && value.equals(v)))) {
-
-      //第一种情况：node是树节点，说明需要进行树节点移除操作
-      if (node instanceof TreeNode)
-        ((TreeNode<K,V>)node).removeTreeNode(this, tab, movable);
-
-      //第二种情况：桶位元素即为查找结果，则将该元素的下一个元素放至桶位中
-      else if (node == p)
-        tab[index] = node.next;
-
-      else
-        //第三种情况：将当前元素p的下一个元素 设置成 要删除元素的 下一个元素。
-        p.next = node.next;
-
-      ++modCount;
-      --size;
-      afterNodeRemoval(node);
-      return node;
-    }
-  }
-  return null;
+    return null;
 }
 ```
 
