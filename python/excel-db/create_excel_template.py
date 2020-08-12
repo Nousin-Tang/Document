@@ -56,8 +56,12 @@ es_ = 'es'
 lk_ = 'lk'
 vi_ = 'vi'
 
-# 语言简称集合
-lang_names = (zh_, en_, ar_, fr_, ru_, es_)
+# 语言简称集合(生成的模板 按照给定的语言生成)
+# lang_names = [zh_, en_, ar_, fr_, ru_, es_]
+lang_names = [zh_]
+
+# 是否删除旧文件
+delete_old_file = False
 
 # 系统名称
 sys_marketing = 'marketing'
@@ -68,6 +72,9 @@ sys_wbs = 'wbs'
 
 # 系统名称集合
 systems = (sys_marketing, sys_store, sys_ams, sys_base, sys_wbs)
+
+# 生成的文件路径
+generate_file_path = []
 
 
 # Excel 名称，类型，系统
@@ -222,8 +229,20 @@ def create_xlsx(system, exl_type, exl_name, cols, lang):
     # 创建文件夹
     if not os.path.exists(file_path):
         os.makedirs(file_path)
+
     # 保存 Excel 模板
-    wb.save(file_path + os.sep + exl_name)
+    _file_path_ = file_path + os.sep + exl_name
+    # 文件是否存在
+    file_exists = os.path.exists(_file_path_)
+    if file_exists and delete_old_file:
+        os.remove(_file_path_)
+
+    # 如果文件存在且不删除 则返回
+    if file_exists and not delete_old_file:
+        return
+    # 创建
+    wb.save(_file_path_)
+    generate_file_path.append(_file_path_)
 
 
 # 创建 xls 格式的 Excel
@@ -246,7 +265,18 @@ def create_xls(system, exl_type, exl_name, cols, lang):
     if not os.path.exists(file_path):
         os.makedirs(file_path)
     # 保存 Excel 模板
-    wb.save(file_path + os.sep + exl_name)
+    _file_path_ = file_path + os.sep + exl_name
+    # 文件是否存在
+    file_exists = os.path.exists(_file_path_)
+    if file_exists and delete_old_file:
+        os.remove(_file_path_)
+
+    # 如果文件存在且不删除 则返回
+    if file_exists and not delete_old_file:
+        return
+    # 创建
+    wb.save(_file_path_)
+    generate_file_path.append(_file_path_)
 
 
 # 生成 Excel 模板
@@ -266,6 +296,27 @@ def generate_excel(excel_name, excel_content):
             create_xlsx(system, exl_type, exl_name, exl_cols, lang)
 
 
+def change_xlsx_to_xls():
+    excel = win32.gencache.EnsureDispatch('excel.application')
+    excel.DisplayAlerts = 0
+
+    for file in generate_file_path:
+        if os.path.isdir(file):
+            return
+        file_name = os.path.splitext(file)  # 文件和格式分开
+        if file_name[1] == '.xlsx':
+            transfer_file1 = file  # 要转换的excel
+            transfer_file2 = file_name[0]  # 转换出来excel
+
+            pro = excel.Workbooks.Open(transfer_file1)  # 打开要转换的excel
+            pro.SaveAs(transfer_file2 + ".xls", FileFormat=56)  # 另存为xls格式
+            pro.Close()
+            if os.path.exists(transfer_file1):  # 如果文件存在
+                # 删除文件，可使用以下两种方法。
+                os.remove(transfer_file1)
+
+    excel.Application.Quit()
+
 # 读取数据 并生成模板
 def read_data_and_generate_template():
     # 读取Excel模板名称
@@ -278,6 +329,8 @@ def read_data_and_generate_template():
         excel_content = get_excel_content(contents, excel_name)
         if len(excel_content) > 0:
             generate_excel(excel_name, excel_content)
+    # 转换 Excel
+    change_xlsx_to_xls()
 
 
 # 转换 xlsx 格式的模板为 xls
@@ -289,6 +342,7 @@ def transfer_xlsx_to_xls(file):
         transfer_file1 = file  # 要转换的excel
         transfer_file2 = file_name[0]  # 转换出来excel
         excel = win32.gencache.EnsureDispatch('excel.application')
+        excel.DisplayAlerts = 0
         pro = excel.Workbooks.Open(transfer_file1)  # 打开要转换的excel
         pro.SaveAs(transfer_file2 + ".xls", FileFormat=56)  # 另存为xls格式
         pro.Close()
@@ -314,4 +368,4 @@ if __name__ == '__main__':
     # 处理生成 xlsx 格式模板
     read_data_and_generate_template()
     # 转换 xlsx 格式的模板为 xls
-    walk_file(target_path)
+    # walk_file(target_path)
