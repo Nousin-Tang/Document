@@ -37,8 +37,7 @@ Thread thread = new Thread(() -> {
 ```
 ### Lambda 表达式定义
 
-> 它们通过使用表达式来提供一种<font color="red">清晰简洁</font>的方式来表示<font color="red">方法接口</font>。
-（又被成为“闭包”或“匿名方法”）
+> 它们通过使用表达式来提供一种<font color="red">清晰简洁</font>的方式来表示<font color="red">方法接口</font>。（又被成为“闭包”或“匿名方法”）
 
 #### 格式
 
@@ -103,7 +102,7 @@ public class Tests {
 // 下面的代码，它会把 "Hello, world!" 打印两遍
 public class Hello {
     
-	// lambda 表达式中的 this 指的是 Hello 对象 
+	  // lambda 表达式中的 this 指的是 Hello 对象 
   	Runnable r1 = () -> { System.out.println(this); }
   	Runnable r2 = () -> { System.out.println(toString()); }
     
