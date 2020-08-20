@@ -17,18 +17,18 @@
 
 1. Spring 核心特性
 
-![核心特性](images/Spring 核心特性.png)
+![核心特性](images/1002.png)
 
 2. Spring 核心价值
 
-![核心价值](images/Spring 核心价值.png)
+![核心价值](images/1001.png)
 
 3. 学习方法（小马哥推荐）
-![学习方法](images/学习方法.png)
+![学习方法](images/1003.png)
 
 ### 03 课前准备：学习三件套（工具、代码与大脑）
 
-![](images/zhunbei.png)
+![](images/1004.png)
 
 ### 04 特性总览：核心特性、数据存储、Web技术、框架整合与测试
 
