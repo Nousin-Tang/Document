@@ -3,6 +3,7 @@
 `volatile`关键字是Java虚拟机提供的最轻量级的同步机制。在多线程编程中`volatile`和`synchronized`都起着举足轻重的作用。
 
 [参照](https://zhuanlan.zhihu.com/p/133851347)
+[CPU参照](https://zhuanlan.zhihu.com/p/133851347)
 
 ## 一、volatile的作用
 
