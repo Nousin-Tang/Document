@@ -3,6 +3,7 @@
 `volatile`关键字是Java虚拟机提供的最轻量级的同步机制。在多线程编程中`volatile`和`synchronized`都起着举足轻重的作用。
 
 [参照](https://zhuanlan.zhihu.com/p/133851347)
+
 [CPU参照](https://zhuanlan.zhihu.com/p/133851347)
 
 ## 一、volatile的作用
@@ -36,7 +37,7 @@ JMM中规定所有的变量都存储在主内存（Main Memory）中，每条线
 
 
 
-![img](https://picb.zhimg.com/80/v2-cf02b047fcd7eab8fe4e5e0b59e2e3f0_720w.jpg)
+![img](images/volatile/1001.png)
 
 
 
@@ -105,7 +106,7 @@ public class TestVolatile {
 
 
 
-![img](https://pic1.zhimg.com/80/v2-9f5ee135e9d6e8e14ffbc7b2ad957ee5_720w.jpg)
+![img](images/volatile/1002.png)
 
 
 
@@ -183,20 +184,20 @@ CASE(_putstatic):
 
 ```cpp
 // Java access flags
-  bool is_public      () const         { return (_flags & JVM_ACC_PUBLIC      ) != 0; }
-  bool is_private     () const         { return (_flags & JVM_ACC_PRIVATE     ) != 0; }
-  bool is_protected   () const         { return (_flags & JVM_ACC_PROTECTED   ) != 0; }
-  bool is_static      () const         { return (_flags & JVM_ACC_STATIC      ) != 0; }
-  bool is_final       () const         { return (_flags & JVM_ACC_FINAL       ) != 0; }
-  bool is_synchronized() const         { return (_flags & JVM_ACC_SYNCHRONIZED) != 0; }
-  bool is_super       () const         { return (_flags & JVM_ACC_SUPER       ) != 0; }
-  // 是否volatile修饰
-  bool is_volatile    () const         { return (_flags & JVM_ACC_VOLATILE    ) != 0; }
-  bool is_transient   () const         { return (_flags & JVM_ACC_TRANSIENT   ) != 0; }
-  bool is_native      () const         { return (_flags & JVM_ACC_NATIVE      ) != 0; }
-  bool is_interface   () const         { return (_flags & JVM_ACC_INTERFACE   ) != 0; }
-  bool is_abstract    () const         { return (_flags & JVM_ACC_ABSTRACT    ) != 0; }
-  bool is_strict      () const         { return (_flags & JVM_ACC_STRICT      ) != 0; }
+bool is_public      () const         { return (_flags & JVM_ACC_PUBLIC      ) != 0; }
+bool is_private     () const         { return (_flags & JVM_ACC_PRIVATE     ) != 0; }
+bool is_protected   () const         { return (_flags & JVM_ACC_PROTECTED   ) != 0; }
+bool is_static      () const         { return (_flags & JVM_ACC_STATIC      ) != 0; }
+bool is_final       () const         { return (_flags & JVM_ACC_FINAL       ) != 0; }
+bool is_synchronized() const         { return (_flags & JVM_ACC_SYNCHRONIZED) != 0; }
+bool is_super       () const         { return (_flags & JVM_ACC_SUPER       ) != 0; }
+// 是否volatile修饰
+bool is_volatile    () const         { return (_flags & JVM_ACC_VOLATILE    ) != 0; }
+bool is_transient   () const         { return (_flags & JVM_ACC_TRANSIENT   ) != 0; }
+bool is_native      () const         { return (_flags & JVM_ACC_NATIVE      ) != 0; }
+bool is_interface   () const         { return (_flags & JVM_ACC_INTERFACE   ) != 0; }
+bool is_abstract    () const         { return (_flags & JVM_ACC_ABSTRACT    ) != 0; }
+bool is_strict      () const         { return (_flags & JVM_ACC_STRICT      ) != 0; }
 ```
 
 3、下面一系列的if...else...对`tos_type`字段的判断处理，是针对java基本类型和引用类型的赋值处理。如：
@@ -222,7 +223,7 @@ inline void oopDesc::release_byte_field_put(int offset, jbyte contents)
 
 **强烈建议大家读一遍`orderAccess.hpp`文件中30-240行的注释！！！**你就会发现本文1.2章所介绍内容的来源，也是网上各种雷同文章的来源。
 
-![img](https://picb.zhimg.com/80/v2-bc745221b6967a3346966821bb1f6b39_720w.jpg)
+![img](images/volatile/1003.png)
 
 
 
@@ -230,7 +231,7 @@ inline void oopDesc::release_byte_field_put(int offset, jbyte contents)
 
 
 
-![img](https://picb.zhimg.com/80/v2-60799c160c09bc99ff2dbc5ca0a3c6e4_720w.jpg)
+![img](images/volatile/1004.png)
 
 
 
@@ -249,7 +250,7 @@ inline void oopDesc::release_byte_field_put(int offset, jbyte contents)
 
 
 
-![img](https://pic3.zhimg.com/80/v2-a70c09d543f49a8784af527346f5adf4_720w.jpg)
+![img](images/volatile/1005.png)
 
 
 
@@ -265,7 +266,7 @@ inline void oopDesc::release_byte_field_put(int offset, jbyte contents)
 
 
 
-![img](https://picb.zhimg.com/80/v2-d7f0b40b2eafcabb59c6c3999978c176_720w.jpg)
+![img](images/volatile/1006.png)
 
 
 

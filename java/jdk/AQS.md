@@ -7,7 +7,7 @@
 
 ## 框架
 
-![avatar](images/1001.png)``
+![avatar](images/aqs/1001.png)
 
 
 它维护了一个 `volatile int state`（代表共享资源）和一个FIFO线程等待队列（多线程争用资源被阻塞时会进入此队列）。这里 `volatile` 是核心关键词，具体`volatile`的语义，在此不述。
@@ -205,7 +205,7 @@ private final boolean parkAndCheckInterrupt() {
 
 #### 总结
 
-![](images/1002.png)
+![img](images/aqs/1002.png)
 
 ### `release(int)`
 
