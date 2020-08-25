@@ -8,30 +8,34 @@
 
 ## 一、volatile的作用
 
-并发编程中有3大重要特性：
+1. 并发编程中有3大重要特性：
 
-- 原子性：一个操作或者多个操作，要么全部执行成功，要么全部执行失败。满足原子性的操作，中途不可被中断。
+    - 原子性：一个操作或者多个操作，要么全部执行成功，要么全部执行失败。满足原子性的操作，中途不可被中断。
 
-- 可见性：多个线程共同访问共享变量时，某个线程修改了此变量，其他线程能立即看到修改后的值。
+    - 可见性：多个线程共同访问共享变量时，某个线程修改了此变量，其他线程能立即看到修改后的值。
 
-- 有序性：程序执行的顺序按照代码的先后顺序执行。（由于JMM模型中允许编译器和处理器为了效率，进行指令重排序的优化。指令重排序在单线程内表现为串行语义，在多线程中会表现为无序。那么多线程并发编程中，就要考虑如何在多线程环境下可以允许部分指令重排，又要保证有序性）
+    - 有序性：程序执行的顺序按照代码的先后顺序执行。（由于JMM模型中允许编译器和处理器为了效率，进行指令重排序的优化。指令重排序在单线程内表现为串行语义，在多线程中会表现为无序。那么多线程并发编程中，就要考虑如何在多线程环境下可以允许部分指令重排，又要保证有序性）
 
-`synchronized`关键字同时保证上述三种特性。
+2. **`synchronized`** 关键字同时保证**原子性、可见性、有序性**。
+    - `synchronized`是同步锁，同步块内的代码相当于同一时刻单线程执行，故不存在原子性和指令重排序的问题
+    - `synchronized`关键字的语义JMM有两个规定，保证其实现内存可见性：
+        - 线程解锁前，必须把共享变量的最新值刷新到主内存中；
+        - 线程加锁前，将清空工作内存中共享变量的值，从主内存中冲洗取值。
 
-- `synchronized`是同步锁，同步块内的代码相当于同一时刻单线程执行，故不存在原子性和指令重排序的问题
-- `synchronized`关键字的语义JMM有两个规定，保证其实现内存可见性：
-- 线程解锁前，必须把共享变量的最新值刷新到主内存中；
-- 线程加锁前，将清空工作内存中共享变量的值，从主内存中冲洗取值。
-
-`volatile`关键字作用的是保证**可见性**和**有序性**，并不保证原子性。
-
-那么，`volatile`是如何保证**可见性**和**有序性**的？我们先进行基于JMM层面的实现基础，后面两章会进行底层原理的介绍。
+3. **`volatile`**关键字作用的是保证**可见性**和**有序性**，并不保证原子性。
 
 ### 1.1、volatile变量的可见性
 
-Java虚拟机规范中定义了一种Java内存 模型（Java Memory Model，即JMM）来屏蔽掉各种硬件和操作系统的内存访问差异，以实现让Java程序在各种平台下都能达到一致的并发效果。Java内存模型的主要目标就是**定义程序中各个变量的访问规则，即在虚拟机中将变量存储到内存和从内存中取出变量这样的细节**。
+Java虚拟机规范中定义了一种Java内存 模型（`Java Memory Model`，即JMM）来屏蔽掉各种硬件和操作系统的内存访问差异，以实现让Java程序在各种平台下都能达到一致的并发效果。
 
-JMM中规定所有的变量都存储在主内存（Main Memory）中，每条线程都有自己的工作内存（Work Memory），线程的工作内存中保存了该线程所使用的变量的从主内存中拷贝的副本。线程对于变量的读、写都必须在工作内存中进行，而不能直接读、写主内存中的变量。同时，本线程的工作内存的变量也无法被其他线程直接访问，必须通过主内存完成。
+Java内存模型的主要目标就是**定义程序中各个变量的访问规则，即在虚拟机中将变量存储到内存和从内存中取出变量这样的细节**。
+
+JMM中规定：
+
+1. 所有的变量都存储在主内存（Main Memory）中，这里所说的变量指的是实例变量和类变量，不包含局部变量，因为局部变量是线程私有的，因此不存在竞争问题。
+2. 每条线程都有自己的工作内存（Work Memory），线程的工作内存中保存了该线程所使用的变量的从主内存中拷贝的副本。
+3. **线程对于变量的读、写都必须在工作内存中进行，而不能直接读、写主内存中的变量**。
+4. 本线程的工作内存的变量也无法被其他线程直接访问，必须通过主内存完成。
 
 整体内存模型如下图所示：
 
@@ -43,12 +47,10 @@ JMM中规定所有的变量都存储在主内存（Main Memory）中，每条线
 
 对于普通共享变量，线程A将变量修改后，体现在此线程的工作内存。在尚未同步到主内存时，若线程B使用此变量，从主内存中获取到的是修改前的值，便发生了共享变量值的不一致，也就是出现了**线程的可见性问题**。
 
-`volatile`定义：
+`volatile`可见性定义：
 
-- 当对volatile变量执行写操作后，JMM会把工作内存中的最新变量值强制刷新到主内存
-- 写操作会导致其他线程中的缓存无效
-
-这样，其他线程使用缓存时，发现本地工作内存中此变量无效，便从主内存中获取，这样获取到的变量便是最新的值，实现了线程的可见性。
+- 当对`volatile`变量执行写操作后，JMM会把工作内存中的最新变量值强制刷新到主内存
+- 写操作会导致其他线程中的缓存无效，这样，其他线程使用缓存时，发现本地工作内存中此变量无效，便从主内存中获取，这样获取到的变量便是最新的值，实现了线程的可见性。
 
 ### 1.2、volatile变量的禁止指令重排序
 
@@ -68,7 +70,7 @@ JMM层面的“**内存屏障**”：
 - **LoadStore屏障**：对于这样的语句Load1; LoadStore; Store2，在Store2及后续写入操作被刷出前，保证Load1要读取的数据被读取完毕。
 - **StoreLoad屏障**： 对于这样的语句Store1; StoreLoad; Load2，在Load2及后续所有读取操作执行前，保证Store1的写入对所有处理器可见。
 
-JVM的实现会在volatile读写前后均加上内存屏障，在一定程度上保证有序性。如下所示：
+JVM的实现会在`volatile`读写前后均加上内存屏障，在一定程度上保证有序性。如下所示：
 
 > LoadLoadBarrier
 > volatile 读操作
@@ -80,7 +82,7 @@ JVM的实现会在volatile读写前后均加上内存屏障，在一定程度上
 
 ## 二、volatile的的底层实现
 
-这一章会从**Java代码、字节码、Jdk源码、汇编层面、硬件层面**去揭开`volatile`的面纱。
+从**Java代码、字节码、Jdk源码、汇编层面、硬件层面**去揭开`volatile`的面纱。
 
 ### 2.1、 Java代码层面
 
@@ -104,21 +106,17 @@ public class TestVolatile {
 
 打印内容过长，截图其中的一部分：
 
+![](images/volatile/1002.png)
 
+可以看到，修饰`counter`字段的public、static、volatile关键字，在字节码层面分别是以下访问标志： **`ACC_PUBLIC, ACC_STATIC, ACC_VOLATILE`**
 
-![img](images/volatile/1002.png)
-
-
-
-可以看到，修饰`counter`字段的public、static、volatile关键字，在字节码层面分别是以下访问标志： **ACC_PUBLIC, ACC_STATIC, ACC_VOLATILE**
-
-`volatile`在字节码层面，就是使用访问标志：**ACC_VOLATILE**来表示，供后续操作此变量时判断访问标志是否为ACC_VOLATILE，来决定是否遵循volatile的语义处理。
+`volatile`在字节码层面，就是使用访问标志：**`ACC_VOLATILE`**来表示，供后续操作此变量时判断访问标志是否为`ACC_VOLATILE`，来决定是否遵循`volatile`的语义处理。
 
 ### 2.3、JVM源码层面
 
 上小节图中main方法编译后的字节码，有`putstatic`和`getstatic`指令（如果是非静态变量，则对应`putfield`和`getfield`指令）来操作`counter`字段。那么对于被`volatile`变量修饰的字段，是如何实现`volatile`语义的，从下面的源码看起。
 
-1、`openjdk8根路径/hotspot/src/share/vm/interpreter`路径下的`bytecodeInterpreter.cpp`文件中，处理`putstatic`和`putfield`指令的代码：
+1. `openjdk8根路径/hotspot/src/share/vm/interpreter`路径下的`bytecodeInterpreter.cpp`文件中，处理`putstatic`和`putfield`指令的代码：
 
 ```cpp
 CASE(_putfield):
@@ -180,7 +178,7 @@ CASE(_putstatic):
   }
 ```
 
-2、重点判断逻辑`cache->is_volatile()`方法，调用的是`openjdk8根路径/hotspot/src/share/vm/utilities`路径下的`accessFlags.hpp`文件中的方法，**用来判断访问标记是否为volatile修饰**。
+2. 重点判断逻辑`cache->is_volatile()`方法，调用的是`openjdk8根路径/hotspot/src/share/vm/utilities`路径下的`accessFlags.hpp`文件中的方法，**用来判断访问标记是否为volatile修饰**。
 
 ```cpp
 // Java access flags
@@ -200,7 +198,7 @@ bool is_abstract    () const         { return (_flags & JVM_ACC_ABSTRACT    ) !=
 bool is_strict      () const         { return (_flags & JVM_ACC_STRICT      ) != 0; }
 ```
 
-3、下面一系列的if...else...对`tos_type`字段的判断处理，是针对java基本类型和引用类型的赋值处理。如：
+3. 下面一系列的`if...else...`对`tos_type`字段的判断处理，是针对java基本类型和引用类型的赋值处理。如：
 
 ```cpp
 obj->release_byte_field_put(field_offset, STACK_INT(-1));
@@ -219,7 +217,7 @@ inline void oopDesc::release_byte_field_put(int offset, jbyte contents)
 
 赋值的操作又被包装了一层，又调用的**OrderAccess::release_store**方法。
 
-4、OrderAccess是定义在`openjdk8根路径/hotspot/src/share/vm/runtime`路径下的`orderAccess.hpp`头文件下的方法，具体的实现是根据不同的操作系统和不同的cpu架构，有不同的实现。
+4. OrderAccess是定义在`openjdk8根路径/hotspot/src/share/vm/runtime`路径下的`orderAccess.hpp`头文件下的方法，具体的实现是根据不同的操作系统和不同的cpu架构，有不同的实现。
 
 **强烈建议大家读一遍`orderAccess.hpp`文件中30-240行的注释！！！**你就会发现本文1.2章所介绍内容的来源，也是网上各种雷同文章的来源。
 
@@ -235,16 +233,16 @@ inline void oopDesc::release_byte_field_put(int offset, jbyte contents)
 
 
 
-可以从上面看到，到c++的实现层面，又使用c++中的volatile关键字，用来修饰变量，通常用于建立语言级别的memory barrier。在《C++ Programming Language》一书中对volatile修饰词的解释：
+可以从上面看到，到c++的实现层面，又使用c++中的`volatile`关键字，用来修饰变量，通常用于建立语言级别的memory barrier。在《C++ Programming Language》一书中对volatile修饰词的解释：
 
 > A volatile specifier is a hint to a compiler that an object may change its value in ways not specified by the language so that aggressive optimizations must be avoided.
 
 含义就是：
 
-- volatile修饰的类型变量表示可以被某些编译器未知的因素更改（如：操作系统，硬件或者其他线程等）
-- 使用 volatile 变量时，避免激进的优化。即：系统总是重新从内存读取数据，即使它前面的指令刚从内存中读取被缓存，防止出现未知更改和主内存中不一致
+- `volatile`修饰的类型变量表示可以被某些编译器未知的因素更改（如：操作系统，硬件或者其他线程等）
+- 使用 `volatile` 变量时，避免激进的优化。即：系统总是重新从内存读取数据，即使它前面的指令刚从内存中读取被缓存，防止出现未知更改和主内存中不一致
 
-5、步骤3中对变量赋完值后，程序又回到了2.3.1小章中第一段代码中一系列的if...else...对`tos_type`字段的判断处理之后。有一行关键的代码：**OrderAccess::storeload();** 即：只要volatile变量赋值完成后，都会走这段代码逻辑。
+5. 步骤3中对变量赋完值后，程序又回到了2.3.1小章中第一段代码中一系列的if...else...对`tos_type`字段的判断处理之后。有一行关键的代码：**OrderAccess::storeload();** 即：只要`volatile`变量赋值完成后，都会走这段代码逻辑。
 
 它依然是声明在`orderAccess.hpp`头文件中，在不同操作系统或cpu架构下有不同的实现。`orderAccess_linux_x86.inline.hpp`是linux系统下x86架构的实现：
 
