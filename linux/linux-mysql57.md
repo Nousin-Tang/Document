@@ -53,7 +53,7 @@ groupadd mysql && useradd -r -g mysql mysql
 
 3. rm -rf /usr/local/mysql
 
-## 【mysql5.6 开机自启动】
+## 【mysql5.7 开机自启动】
 
 1. 将服务文件复制一份到init.d下，并重命名为mysqld 
 
@@ -62,7 +62,7 @@ groupadd mysql && useradd -r -g mysql mysql
 2. 对文件赋予执行权限 
 
 `hmod +x /etc/init.d/mysqld` 或 `chmod 777 /etc/init.d/mysqld`
-   
+
 3. 增加mysqld服务
 
 `chkconfig --add mysqld`
