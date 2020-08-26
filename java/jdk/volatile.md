@@ -26,6 +26,8 @@
 
 ### 1.1、volatile变量的可见性
 
+#### Java内存模型
+
 Java虚拟机规范中定义了一种Java内存 模型（`Java Memory Model`，即JMM）来屏蔽掉各种硬件和操作系统的内存访问差异，以实现让Java程序在各种平台下都能达到一致的并发效果。
 
 Java内存模型的主要目标就是**定义程序中各个变量的访问规则，即在虚拟机中将变量存储到内存和从内存中取出变量这样的细节**。
@@ -47,6 +49,12 @@ JMM中规定：
 
 对于普通共享变量，线程A将变量修改后，体现在此线程的工作内存。在尚未同步到主内存时，若线程B使用此变量，从主内存中获取到的是修改前的值，便发生了共享变量值的不一致，也就是出现了**线程的可见性问题**。
 
+#### 可见性
+
+> 当一个线程修改了线程共享变量的值，其它线程在使用前，能够得到最新的修改值。
+>
+> 可见性可以认为是最弱的“`一致性`”（`弱一致`），只保证用户见到的数据是一致的，但不保证任意时刻，存储的数据都是一致的（`强一致`）。
+
 `volatile`可见性定义：
 
 - 当对`volatile`变量执行写操作后，JMM会把工作内存中的最新变量值强制刷新到主内存
@@ -54,31 +62,77 @@ JMM中规定：
 
 ### 1.2、volatile变量的禁止指令重排序
 
-`volatile`是通过编译器在生成字节码时，在指令序列中添加“**内存屏障**”来禁止指令重排序的。
+#### 指令重排
 
-硬件层面的“**内存屏障**”：
+> 止指令重排序：为了提高性能，编译器和处理器常常会对既定的代码执行顺序进行指令重排序。
 
-- **sfence**：即写屏障(Store Barrier)，在写指令之后插入写屏障，能让写入缓存的最新数据写回到主内存，以保证写入的数据立刻对其他线程可见
-- **lfence**：即读屏障(Load Barrier)，在读指令前插入读屏障，可以让高速缓存中的数据失效，重新从主内存加载数据，以保证读取的是最新的数据。
-- **mfence**：即全能屏障(modify/mix Barrier )，兼具sfence和lfence的功能
-- **lock 前缀**：lock不是内存屏障，而是一种锁。执行时会锁住内存子系统来确保执行顺序，甚至跨多个CPU。
+重排序可以分为如下三种：
 
-JMM层面的“**内存屏障**”：
+- 编译器优化的重排序。编译器在不改变单线程程序语义的前提下，可以重新安排语句的执行顺序;
+- 指令级并行的重排序。现代处理器采用了指令级并行技术来将多条指令重叠执行。如果不存在数据依赖性，处理器可以改变语句对应机器指令的执行顺序;
+- 内存系统的重排序。由于处理器使用缓存和读/写缓冲区，这使得加载和存储操作看上去可能是在乱序执行的。
 
-- **LoadLoad屏障**： 对于这样的语句Load1; LoadLoad; Load2，在Load2及后续读取操作要读取的数据被访问前，保证Load1要读取的数据被读取完毕。
-- **StoreStore屏障**：对于这样的语句Store1; StoreStore; Store2，在Store2及后续写入操作执行前，保证Store1的写入操作对其它处理器可见。
-- **LoadStore屏障**：对于这样的语句Load1; LoadStore; Store2，在Store2及后续写入操作被刷出前，保证Load1要读取的数据被读取完毕。
-- **StoreLoad屏障**： 对于这样的语句Store1; StoreLoad; Load2，在Load2及后续所有读取操作执行前，保证Store1的写入对所有处理器可见。
+> **as-if-serial**：不管怎么重排序，单线程下的执行结果不能被改变。
 
-JVM的实现会在`volatile`读写前后均加上内存屏障，在一定程度上保证有序性。如下所示：
+JMM会针对编译器制定volatile重排序规则表：
 
-> LoadLoadBarrier
-> volatile 读操作
-> LoadStoreBarrier
->
-> StoreStoreBarrier
-> volatile 写操作
-> StoreLoadBarrier
+读写的类型分为：
+
+- 无volatile关键字的变量的读写（普通读写）
+- volatile关键字修饰的变量的读（volatile读）
+- volatile关键字修饰的变量的写（volatile写）
+
+对有volatile关键字所修饰的变量的读写操作，其前后其他的读写操作的重排优化要注意（必须保证可见性）
+
+![img](https://upload-images.jianshu.io/upload_images/4642883-79306e755b8a8008.png?imageMogr2/auto-orient/strip|imageView2/2/w/1000/format/webp)
+
+上图中NO是禁止重排，划重点：
+
+1. 当第二个操作是volatile写时，不管第一个操作是什么，都不能重排序。这个规则确保volatile写之前的操作不会被编译器重排序到volatile写之后。
+
+2. 当第一个操作是volatile读时，不管第二个操作是什么，都不能重排序。这个规则确保volatile读之后的操作不会被编译器重排序到volatile读之前。
+
+3. 当第一个操作是volatile写，第二个操作是volatile读/写时，不能重排序。
+
+#### 内存屏障
+
+> `volatile`是通过编译器在生成字节码时，在指令序列中添加“**内存屏障**”来禁止指令重排序的。
+
+内存屏障有两个作用：
+1. 阻止屏障两侧的指令重排序；
+2. 强制把写缓冲区/高速缓存中的脏数据等写回主内存，让缓存中相应的数据失效。
+
+内存屏障分类：
+
+- 硬件层面的“**内存屏障**”：
+  - **sfence**：写屏障(Store Barrier)，在写指令之后插入写屏障，能让写入缓存的最新数据写回到主内存，以保证写入的数据立刻对其他线程可见
+  - **lfence**：读屏障(Load Barrier)，在读指令前插入读屏障，可以让高速缓存中的数据失效，重新从主内存加载数据，以保证读取的是最新的数据。
+  - **mfence**：全能屏障(modify/mix Barrier )，兼具sfence和lfence的功能
+  - **lock 前缀**：lock不是内存屏障，而是一种锁。执行时会锁住内存子系统来确保执行顺序，甚至跨多个CPU。
+
+- JMM层面的“**内存屏障**”：
+
+    - 在每个`volatile`**写操作**的**前面**插入一个StoreStore屏障。
+    - 在每个`volatile`**写操作**的**后面**插入一个StoreLoad屏障。
+    - 在每个`volatile`**读操作**的**后面**插入一个LoadLoad屏障。
+    - 在每个`volatile`**读操作**的**后面**插入一个LoadStore屏障。
+
+> LoadLoad屏障： 对于这样的语句Load1; LoadLoad; Load2，在Load2及后续读取操作要读取的数据被访问前，保证Load1要读取的数据被读取完毕。
+> StoreStore屏障：对于这样的语句Store1; StoreStore; Store2，在Store2及后续写入操作执行前，保证Store1的写入操作对其它处理器可见。
+> LoadStore屏障：对于这样的语句Load1; LoadStore; Store2，在Store2及后续写入操作被刷出前，保证Load1要读取的数据被读取完毕。
+> StoreLoad屏障： 对于这样的语句Store1; StoreLoad; Load2，在Load2及后续所有读取操作执行前，保证Store1的写入对所有处理器可见。
+
+volatile 读写场景：
+
+- volatile 读操作是在后面插入两个内存屏障。
+
+  <img src="https://upload-images.jianshu.io/upload_images/4642883-47ceb85c0e0e6807.png?imageMogr2/auto-orient/strip|imageView2/2/w/801/format/webp" alt="img" style="zoom:67%;" />
+  
+- volatile 写是在前面和后面分别插入内存屏障
+
+<img src="https://upload-images.jianshu.io/upload_images/4642883-fd14c98c329c3300.png?imageMogr2/auto-orient/strip|imageView2/2/w/747/format/webp" alt="img" style="zoom:67%;" />
+
+
 
 ## 二、volatile的的底层实现
 
