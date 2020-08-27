@@ -2,9 +2,9 @@
 
 [参照](https://www.cnblogs.com/xuyulin/p/5468102.html)
 
-## 字符串函数
+[TOC]
 
-[示例](#ASCII)
+## 字符串函数
 
 ### 总览
 
@@ -13,7 +13,7 @@
 | ascii(s)       | 返回字符串 s 的第一个字符的 ASCII 码                         | [示例](#ascii) |
 | conv(n,from_base,to_base) | 对数字n进制转换,并转换为字串返回<br/>（任何参数为null时返回null，进制范围为2-36进制，<br>当to_base是负数时n作为有符号数否则作无符号数，conv以64位点精度工作） | [示例](#conv) |
 | bin(n)，oct(n)，hex(n) | 把n转为二/八/十六进制值并以字串返回(n是bigint数字,等价于conv(n,10,2/8/16)) | [示例](#bin) |
-| char(n,...) | 返回由参数n,...对应的ascii代码字符组成的一个字串(参数是n,...是数字序列,null值被跳过) | [示例](#char) |
+| char(n,...) | 返回由参数n,...对应的ascii代码字符组成的一个字串<br/>(参数是n,...是数字序列,null值被跳过) | [示例](#char) |
 | concat(s1,s2...sn) | 字符串 s1,s2 等多个字符串合并为一个字符串 | [示例](#concat) |
 | concat_ws(x, s1,s2...sn) | 同 CONCAT(s1,s2,...) 函数，但是每个字符串之间要加上 x，x 可以是分隔符 | [示例](#concat_ws) |
 | length(s)<br/>octet_length(s) | 返回字符串 s 的字符数（按照**字节**来统计）                   | [示例](#length) |
@@ -286,7 +286,7 @@ mysql> update table_name set blob_column=load_file("/tmp/picture") where id=1;
 | degrees(n) | 把n从弧度变换为角度并返回 | [示例](#degrees) |
 | radians(n) | 把n从角度变换为弧度并返回 | [示例](#radians) |
 | truncate(n,d) | 保留数字n的d位小数并返回 | [示例](#truncate) |
-| least(x,y,...) | 返回最小值<br>(如果返回值被用在整数上下文或所有参数都是整数则他们作为整数比较,否则按忽略大小写的字符串被比较)<br>> 整数(实数或大小敏感字串) | [示例](#least) |
+| least(x,y,...) | 返回最小值<br>(如果返回值被用在整数上下文或所有参数都是整数则他们作为整数比较,<br/>否则按忽略大小写的字符串被比较)（其中 整数指实数或大小敏感字串）) | [示例](#least) |
 | greatest(x,y,...) | 返回最大值(其余同least()) | [示例](#greatest) |
 
 
@@ -550,64 +550,56 @@ mysql> select greatest("b","a","c");
 | sec_to_time(seconds) | 以'hh:mm:ss'或hhmmss格式返回秒数转成的time值<br/>(根据返回值所处上下文是字符串或数字) | [示例](#sec_to_time) |
 | time_to_sec(time) | 返回time值有多少秒 | [示例](#time_to_sec) |
 
-- date_add(date,interval expr type) 
-> type值 含义 期望的expr格式: 
-> 　second 秒 seconds 
-> 　minute 分钟 minutes
-> 　hour 时间 hours
-> 　day 天 days 
-> 　month 月 months
-> 　year 年 years
-> 　minute_second 分钟和秒 "minutes:seconds" 
-> 　hour_minute 小时和分钟 "hours:minutes" 
-> 　day_hour 天和小时 "days hours"
-> 　year_month 年和月 "years-months"
-> 　hour_second 小时, 分钟， "hours:minutes:seconds"
-> 　day_minute 天, 小时, 分钟 "days hours:minutes"
-> 　day_second 天, 小时, 分钟, 秒 "days
-> hours:minutes:seconds"
-> 　expr中允许任何标点做分隔符,如果所有是date值时结果是一个
-> date值,否则结果是一个datetime值) 
-> 　如果type关键词不完整,则mysql从右端取值,day_second因为缺
-> 少小时分钟等于minute_second) 
-> 　如果增加month、year_month或year,天数大于结果月份的最大天
-> 数则使用最大天数) 
+- date_add(date,interval expr type)   其中 type值 含义 期望的expr格式:
+    - second 秒 seconds
+    - minute 分钟 minutes
+    - hour 时间 hours
+    - day 天 days
+    - month 月 months
+    - year 年 years
+    - minute_second 分钟和秒 "minutes:seconds"
+    - hour_minute 小时和分钟 "hours:minutes"
+    - day_hour 天和小时 "days hours"
+    - year_month 年和月 "years-months"
+    - hour_second 小时, 分钟， "hours:minutes:seconds"
+    - day_minute 天, 小时, 分钟 "days hours:minutes"
+    - day_second 天, 小时, 分钟, 秒 "days hours:minutes:seconds"
+    - expr中允许任何标点做分隔符,如果所有是date值时结果是一个date值,否则结果是一个datetime值)
+    - 如果type关键词不完整,则mysql从右端取值,day_second因为缺少小时分钟等于minute_second)
+    - 如果增加month、year_month或year,天数大于结果月份的最大天数则使用最大天数)
 
 
 - date_format(date,format) 中 format 格式：
-> 　%Y 年, 数字, 4 位
-> 　%y 年, 数字, 2 位
-> 　%m 月, 数字(01……12)
-> 　%c 月, 数字(1……12)
-> 　%M 月名字(january……december)
-> 　%d 月份中的天数, 数字(00……31) 
-> 　%e 月份中的天数, 数字(0……31)
-> 　%W 星期名字(sunday……saturday) 
-> 　%d 有英语前缀的月份的日期(1st, 2nd, 3rd, 等等
-> 　%a 缩写的星期名字(sun……sat) 
-> 　%b 缩写的月份名字(jan……dec) 
-> 　%j 一年中的天数(001……366) 
-> 　%h 小时(00……23) 
-> 　%k 小时(0……23)
-> 　%H 小时(01……12) 
-> 　%i 小时(01……12) 
-> 　%l 小时(1……12)
-> 　%i 分钟, 数字(00……59) 
-> 　%r 时间,12 小时(hh:mm:ss [ap]m) 
-> 　%t 时间,24 小时(hh:mm:ss) 
-> 　%s 秒(00……59) 
-> 　%s 秒(00……59) 
-> 　%p am或pm 
-> 　%w 一个星期中的天数(0=sunday ……6=saturday ）
-> 　%u 星期(0……52), 这里星期天是星期的第一天
-> 　%u 星期(0……52), 这里星期一是星期的第一天
-> 　%% 字符% 
-
+    - %Y 年, 数字, 4 位
+    - %y 年, 数字, 2 位
+    - %m 月, 数字(01……12)
+    - %c 月, 数字(1……12)
+    - %M 月名字(january……december)
+    - %d 月份中的天数, 数字(00……31)
+    - %e 月份中的天数, 数字(0……31)
+    - %W 星期名字(sunday……saturday)
+    - %d 有英语前缀的月份的日期(1st, 2nd, 3rd, 等等
+    - %a 缩写的星期名字(sun……sat)
+    - %b 缩写的月份名字(jan……dec)
+    - %j 一年中的天数(001……366)
+    - %h 小时(00……23)
+    - %k 小时(0……23)
+    - %H 小时(01……12)
+    - %i 小时(01……12)
+    - %l 小时(1……12)
+    - %i 分钟, 数字(00……59)
+    - %r 时间,12 小时(hh:mm:ss [ap]m)
+    - %t 时间,24 小时(hh:mm:ss)
+    - %s 秒(00……59)
+    - %s 秒(00……59)
+    - %p am或pm
+    - %w 一个星期中的天数(0=sunday ……6=saturday ）
+    - %u 星期(0……52), 这里星期天是星期的第一天
+    - %u 星期(0……52), 这里星期一是星期的第一天
+    - %% 字符% 
 
 
 ### 示例
-
-
 
 
 <a id="dayofweek">dayofweek</a>
@@ -825,14 +817,14 @@ mysql> select time_to_sec('00:39:38');
 ### 总览
 | 函数                  | 描述                                                         | 示例          |
 | --------------------- | ------------------------------------------------------------ | ------------- |
-| cast(x as type) | 转换数据类型 | [示例](#) |
-| coalesce(expr1, expr2, ...., expr_n) | 返回参数中的第一个非空表达式（从左向右） | [示例](#) |
-| convert(s USING cs) | 函数将字符串 s 的字符集变成 cs | [示例](#) |
-| if(expr,v1,v2) | 如果表达式 expr 成立，返回结果 v1；否则，返回结果 v2。 | [示例](#) |
-| ifnull(v1,v2) | 如果 v1 的值不为 NULL，则返回 v1，否则返回 v2。 | [示例](#) |
+| cast(x as type) | 转换数据类型 | [示例](#cast) |
+| coalesce(expr1, expr2, ...., expr_n) | 返回参数中的第一个非空表达式（从左向右） | [示例](#coalesce) |
+| convert(s USING cs) | 函数将字符串 s 的字符集变成 cs | [示例](#convert) |
+| if(expr,v1,v2) | 如果表达式 expr 成立，返回结果 v1；否则，返回结果 v2。 | [示例](#if) |
+| ifnull(v1,v2) | 如果 v1 的值不为 NULL，则返回 v1，否则返回 v2。 | [示例](#ifnull) |
 | isnull(expression) | 判断表达式是否为 NULL |  |
-| nullif(expr1, expr2) | 比较两个字符串，如果字符串 expr1 与 expr2 相等 返回 NULL，否则返回 expr1 | [示例](#) |
-| CASE expression<br>WHEN condition1 THEN result1  <br>ELSE result END | CASE 表示函数开始，END 表示函数结束。如果 condition1 成立，则返回 result1<br>当全部不成立则返回 result，而当有一个成立之后，后面的就不执行了。 | [示例](#) |
+| nullif(expr1, expr2) | 比较两个字符串，如果字符串 expr1 与 expr2 相等 返回 NULL，否则返回 expr1 | [示例](#nullif) |
+| case expression<br>when condition1 then result1  <br>else result end | CASE 表示函数开始，END 表示函数结束。如果 condition1 成立，则返回 result1<br>当全部不成立则返回 result，而当有一个成立之后，后面的就不执行了。 | [示例](#case) |
 
 ### 示例
 <a id="cast">cast</a>
@@ -876,7 +868,7 @@ mysql> SELECT ISNULL(NULL);
 mysql> SELECT NULLIF(25, 25);
 　　-> 
 ```
-<a id="CASE ">CASE </a>
+<a id="case">case</a>
 
 ```mysql
 mysql> SELECT CASE  WHEN 1 > 0　THEN '1 > 0' WHEN 2 > 0　THEN '2 > 0' ELSE '3 > 0' END;
