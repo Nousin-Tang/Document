@@ -1,16 +1,34 @@
-# AQS
+# AQS 源码解读
 
 > `AbstractQueuedSynchronizer `抽象的队列式的同步器，AQS定义了一套多线程访问共享资源的同步器框架，许多同步类实现都依赖于它。
-> 如常用的`ReentrantLock`、`Semaphore`、`CountDownLatch` ...。
+> 如常用的`ReentrantLock`、`Semaphore`、`CountDownLatch`、`FutureTask` ...。
 
 [参照](https://www.cnblogs.com/waterystone/p/4920797.html#4302396)
 
-## 框架
+## AQS结构
 
-![avatar](images/aqs/1001.png)
+```java
+// 头结点，可以看做 当前持有锁的线程 可能是最好理解的
+private transient volatile Node head;
 
+// 阻塞的尾节点，每个新的节点进来，都插入到最后，也就形成了一个链表
+private transient volatile Node tail;
 
-它维护了一个 `volatile int state`（代表共享资源）和一个FIFO线程等待队列（多线程争用资源被阻塞时会进入此队列）。这里 `volatile` 是核心关键词，具体`volatile`的语义，在此不述。
+// 这个是最重要的，代表当前锁的状态，0代表没有被占用，大于 0 代表有线程持有当前锁
+// 这个值可以大于 1，是因为锁可以重入，每次重入都加上 1
+private volatile int state;
+
+// 代表当前持有独占锁的线程，举个最重要的使用例子，因为锁可以重入
+// reentrantLock.lock()可以嵌套调用多次，所以每次用这个来判断当前线程是否已经拥有了锁
+// if (currentThread == getExclusiveOwnerThread()) {state++}
+private transient Thread exclusiveOwnerThread; //继承自AbstractOwnableSynchronizer
+```
+
+![](images/aqs/1001.png)
+
+AQS的等待队列，它维护了一个 `volatile int state`（代表共享资源）和一个FIFO线程等待队列（即CLH队列）（多线程争用资源被阻塞时会进入此队列）。这里 `volatile` 是核心关键词。
+
+> CLH锁即Craig, Landin, and Hagersten (CLH)，CLH锁也是一种基于链表的可扩展、高性能、公平的自旋锁，线程只需要在本地自旋，查询前驱节点的状态，如果前驱节点释放了锁，就结束自旋。
 
 `state`的访问方式有三种：
 
@@ -18,14 +36,97 @@
 - `setState()`
 - `compareAndSetState()`
 
-AQS定义两种资源共享方式：
+### Node 实例
+
+等待队列中每个线程被包装成一个 Node 实例，数据结构是链表。
+
+```java
+static final class Node {
+    // 标识节点当前在共享模式下
+    static final Node SHARED = new Node();
+    // 标识节点当前在独占模式下
+    static final Node EXCLUSIVE = null;
+
+    // ======== 下面的几个int常量是给waitStatus用的 ===========
+    /** waitStatus value to indicate thread has cancelled */
+    // 代码此线程取消了争抢这个锁
+    static final int CANCELLED =  1;
+    /** waitStatus value to indicate successor's thread needs unparking */
+    // 官方的描述是，其表示当前node的后继节点对应的线程需要被唤醒
+    static final int SIGNAL    = -1;
+    /** waitStatus value to indicate thread is waiting on condition */
+    // 本文不分析condition，所以略过吧，下一篇文章会介绍这个
+    static final int CONDITION = -2;
+    /** waitStatus value to indicate the next acquireShared should unconditionally propagate */
+    // 同样的不分析，略过吧
+    static final int PROPAGATE = -3;
+    // =====================================================
+
+    // 取值为上面的1、-1、-2、-3，或者0(以后会讲到)
+    // 这么理解，暂时只需要知道如果这个值 大于0 代表此线程取消了等待，
+    //    ps: 半天抢不到锁，不抢了，ReentrantLock是可以指定timeouot的。。。
+    volatile int waitStatus;
+    // 前驱节点的引用
+    volatile Node prev;
+    // 后继节点的引用
+    volatile Node next;
+    // 这个就是线程本尊
+    volatile Thread thread;
+  
+    // 节点当前在共享模式下返回true
+    final boolean isShared() {
+        return nextWaiter == SHARED;
+    }
+
+    /**
+     * Returns previous node, or throws NullPointerException if null.
+     * Use when predecessor cannot be null.  The null check could
+     * be elided, but is present to help the VM.
+     *
+     * @return the predecessor of this node
+     */
+    final Node predecessor() throws NullPointerException {
+        Node p = prev;
+        if (p == null)
+            throw new NullPointerException();
+        else
+            return p;
+    }
+
+    Node() {    // Used to establish initial head or SHARED marker
+    }
+
+    Node(Thread thread, Node mode) {     // Used by addWaiter
+        this.nextWaiter = mode;
+        this.thread = thread;
+    }
+
+    Node(Thread thread, int waitStatus) { // Used by Condition
+        this.waitStatus = waitStatus;
+        this.thread = thread;
+    }
+}
+```
+
+
+### 结点状态 `waitStatus`
+
+- `CANCELLED(1)`：表示当前结点已取消调度。当timeout或被中断（响应中断的情况下），会触发变更为此状态，进入该状态后的结点将不会再变化。
+- `SIGNAL(-1)`：表示后继结点在等待当前结点唤醒。后继结点入队时，会将前继结点的状态更新为SIGNAL。
+- `CONDITION(-2)`：表示结点等待在`Condition`上，当其他线程调用了`Condition`的`signal()`方法后，`CONDITION`状态的结点将**从等待队列转移到同步队列中**，等待获取同步锁。
+- `PROPAGATE(-3)`：共享模式下，前继结点不仅会唤醒其后继结点，同时也可能会唤醒后继的后继结点。
+- `0`：新结点入队时的默认状态。
+
+> 注意，**负值表示结点处于有效等待状态，而正值表示结点已被取消。所以源码中很多地方用>0、<0来判断结点的状态是否正常**。
+
+### AQS定义两种资源共享方式
 
 - `Exclusive`（独占，只有一个线程能执行，如`ReentrantLock`）
 - `Share`（共享，多个线程可同时执行，如`Semaphore/CountDownLatch`）
 
-不同的自定义同步器争用共享资源的方式也不同。**自定义同步器在实现时只需要实现共享资源 `state` 的获取与释放方式即可**，至于具体线程等待队列的维护（如获取资源失败入队/唤醒出队等），AQS已经在顶层实现好了
+不同的自定义同步器争用共享资源的方式也不同。**自定义同步器在实现时只需要实现共享资源 `state` 的获取与释放方式即可**，至于具体线程等待队列的维护（如获取资源失败入队/唤醒出队等），AQS已经在顶层实现好了。
 
-自定义同步器实现时主要实现以下几种方法：
+### 自定义同步器实现时主要实现以下几种方法：
 
 - `isHeldExclusively()`：该线程是否正在独占资源。只有用到`condition`才需要去实现它。
 - `tryAcquire(int)`：独占方式。尝试**获取**资源，成功则返回true，失败则返回false。
@@ -39,19 +140,13 @@ AQS定义两种资源共享方式：
 
 一般来说，自定义同步器要么是独占方法，要么是共享方式，他们也只需实现`tryAcquire-tryRelease`、`tryAcquireShared-tryReleaseShared`中的一种即可。但AQS也支持自定义同步器同时实现独占和共享两种方式，如`ReentrantReadWriteLock`。
 
-## 源码解读
+## 独占锁
 
-### 结点状态 `waitStatus`
+![](images/aqs/1003.png)
 
-- `CANCELLED(1)`：表示当前结点已取消调度。当timeout或被中断（响应中断的情况下），会触发变更为此状态，进入该状态后的结点将不会再变化。
-- `SIGNAL(-1)`：表示后继结点在等待当前结点唤醒。后继结点入队时，会将前继结点的状态更新为SIGNAL。
-- `CONDITION(-2)`：表示结点等待在`Condition`上，当其他线程调用了`Condition`的`signal()`方法后，`CONDITION`状态的结点将**从等待队列转移到同步队列中**，等待获取同步锁。
-- `PROPAGATE(-3)`：共享模式下，前继结点不仅会唤醒其后继结点，同时也可能会唤醒后继的后继结点。
-- `0`：新结点入队时的默认状态。
+### 获取锁
 
-> 注意，**负值表示结点处于有效等待状态，而正值表示结点已被取消。所以源码中很多地方用>0、<0来判断结点的状态是否正常**。
-
-### `acquire(int)`
+#### `acquire(int)`
 
 独占模式下线程获取共享资源的顶层入口。如果获取到资源，线程直接返回，否则进入等待队列，直到获取到资源为止，且整个过程忽略中断的影响。这也正是`lock()`的语义，当然不仅仅只限于`lock()`。获取到资源后，线程就可以去执行其临界区代码了。
 
@@ -59,7 +154,11 @@ AQS定义两种资源共享方式：
 
 ```java
 public final void acquire(int arg) {
-    if (!tryAcquire(arg) && acquireQueued(addWaiter(Node.EXCLUSIVE), arg))
+    // 尝试获取锁
+    if (!tryAcquire(arg) && 
+        // tryAcquire(arg)没有成功，这个时候需要把当前线程挂起，放到阻塞队列中。
+        acquireQueued(addWaiter(Node.EXCLUSIVE), arg))
+       // 线程自我中断
        selfInterrupt();
 }
 ```
@@ -207,9 +306,11 @@ private final boolean parkAndCheckInterrupt() {
 
 ![img](images/aqs/1002.png)
 
-### `release(int)`
+### 释放锁
 
+![](images/aqs/1004.png)
 
+#### `release(int)`
 
 独占模式下线程释放共享资源的顶层入口。它会释放指定量的资源，如果彻底释放了（即state=0）,它会唤醒等待队列里的其他线程来获取资源。这也正是`unlock()`的语义，当然不仅仅只限于`unlock()`。
 
@@ -321,7 +422,13 @@ NPE（`NullPointerException`）后等了很久，线程1都没有得到执行，
 2）线程被`interupt`了？线程在运行态是不响应中断的，所以也不会抛出异常；
 3）release代码有bug，抛出异常了？目前来看，Doug Lea的release方法还是比较健壮的，没有看出能引发异常的情形。除非自己写的`tryRelease()`有bug，那就没啥说的，自己写的bug只能自己含着泪去承受了。
 
-### `acquireShared`
+## 共享锁
+
+![](images/aqs/1005.png)
+
+### 获取共享锁
+
+#### `acquireShared`
 
 此方法是共享模式下线程获取共享资源的顶层入口。它会获取指定量的资源，获取成功则直接返回，获取失败则进入等待队列，直到获取到资源为止，整个过程忽略中断。下面是`acquireShared()`的源码：
 
@@ -400,7 +507,9 @@ private void setHeadAndPropagate(Node node, int propagate) {
 1. `tryAcquireShared()`尝试获取资源，成功则直接返回；
 2. 失败则通过`doAcquireShared()`进入等待队列`park()`，直到被`unpark()/interrupt()`并成功获取到资源才返回。整个等待过程也是忽略中断的。
 
-### `releaseShared()`
+### 共享锁释放
+
+#### `releaseShared()`
 
 此方法是共享模式下线程释放共享资源的顶层入口。它会释放指定量的资源，如果成功释放且允许唤醒等待线程，它会唤醒等待队列里的其他线程来获取资源。
 
@@ -446,6 +555,169 @@ private void doReleaseShared() {
 #### 小结
 
 本节我们详解了独占和共享两种模式下获取-释放资源(`acquire-release`、`acquireShared-releaseShared`)的源码，相信大家都有一定认识了。值得注意的是，`acquire()`和`acquireShared()`两种方法下，线程在等待队列中都是忽略中断的。AQS也支持响应中断的，`acquireInterruptibly()/acquireSharedInterruptibly()`即是，相应的源码跟`acquire()`和`acquireShared()`差不多，这里就不再详解了。
+
+## 中断
+
+在获取锁时还可以设置响应中断，独占锁和共享锁的处理逻辑类似，这里我们以独占锁为例。使用 acquireInterruptibly 方法，在获取独占锁时可以响应中断，下面是具体的实现：
+
+```java
+public final void acquireInterruptibly(int arg) throws InterruptedException {
+    if (Thread.interrupted())
+        throw new InterruptedException();
+    if (!tryAcquire(arg))
+        doAcquireInterruptibly(arg);
+}
+
+private void doAcquireInterruptibly(int arg) throws InterruptedException {
+    final Node node = addWaiter(Node.EXCLUSIVE);
+    boolean failed = true;
+    try {
+        for (;;) {
+            final Node p = node.predecessor();
+            if (p == head && tryAcquire(arg)) {
+                setHead(node);
+                p.next = null; // help GC
+                failed = false;
+                return;
+            }
+            if (shouldParkAfterFailedAcquire(p, node) && parkAndCheckInterrupt()) {
+                // 这里会抛出异常
+                throw new InterruptedException();
+            }
+        }
+    } finally {
+        if (failed)
+            cancelAcquire(node);
+    }
+}
+```
+
+从上面的代码中我们可以看出，acquireInterruptibly 和 acquire 的逻辑类似，只是在下面的代码处有所不同：当线程因为中断而退出阻塞状态时，会直接抛出 InterruptedException 异常。
+
+```java
+if (shouldParkAfterFailedAcquire(p, node) && parkAndCheckInterrupt()) {
+    // 这里会抛出异常
+    throw new InterruptedException();
+}
+```
+
+我们知道，不管是抛出异常还是方法返回，程序都会执行 finally 代码，而 failed 肯定为 true，所以抛出异常之后会执行 cancelAcquire 方法，cancelAcquire 方法主要将节点从同步队列中移除。下面是具体的实现：
+
+```java
+private void cancelAcquire(Node node) {
+    // Ignore if node doesn't exist
+    if (node == null)
+        return;
+
+    node.thread = null;
+
+    // 跳过前面的已经取消的节点
+    Node pred = node.prev;
+    while (pred.waitStatus > 0)
+        node.prev = pred = pred.prev;
+
+    // 保存下 pred 的后继结点，以便 CAS 操作使用
+    // 因为可能存在已经取消的节点，所以 pred.next 不一等于 node
+    Node predNext = pred.next;
+
+    // Can use unconditional write instead of CAS here.
+    // After this atomic step, other Nodes can skip past us.
+    // Before, we are free of interference from other threads.
+    // 将节点状态设为 CANCELED
+    node.waitStatus = Node.CANCELLED;
+
+    // If we are the tail, remove ourselves.
+    if (node == tail && compareAndSetTail(node, pred)) {
+        compareAndSetNext(pred, predNext, null);
+    } else {
+        // If successor needs signal, try to set pred's next-link
+        // so it will get one. Otherwise wake it up to propagate.
+        int ws;
+        if (pred != head &&
+            ((ws = pred.waitStatus) == Node.SIGNAL ||
+                (ws <= 0 && compareAndSetWaitStatus(pred, ws, Node.SIGNAL))) &&
+            pred.thread != null) {
+            Node next = node.next;
+            if (next != null && next.waitStatus <= 0)
+                compareAndSetNext(pred, predNext, next);
+        } else {
+            unparkSuccessor(node);
+        }
+
+        node.next = node; // help GC
+    }
+}
+```
+
+从上面的代码可以看出，节点的删除分为三种情况：
+
+- 删除节点为尾节点，直接将该节点的第一个有效前置节点置为尾节点
+- 删除节点的前置节点为头节点，则对该节点执行 unparkSuccessor 操作
+- 删除节点为中间节点，结果如下图所示。下图中（1）表示同步队列的初始状态，假设删除 node2， node1 是正常节点（非 CANCELED），（2）就是删除 node2 后同步队列的状态，此时 node1 节点的后继已经变为 node3，也就是说当 node1 变为 head 之后，会直接唤醒 node3。当另外的一个节点中断之后再次执行 cancelAcquire，在执行下面的代码时，会使同步队列的状态由（2）变为（3），此时 node2 已经没有外界指针了，可以被回收了。如果一直没有另外一个节点中断，也就是同步队列一直处于（2）状态，那么需要等 node3 被回收之后，node2 才可以被回收。
+
+```java
+Node pred = node.prev;
+while (pred.waitStatus > 0)
+    node.prev = pred = pred.prev;
+```
+
+![](images/aqs/1006.png)
+
+## 超时
+
+超时是在中断的基础上加了一层时间的判断，这里我们还是以独占锁为例。 tryAcquireNanos 支持获取锁的超时处理，下面是具体实现：
+
+```java
+public final boolean tryAcquireNanos(int arg, long nanosTimeout) throws InterruptedException {
+    if (Thread.interrupted())
+        throw new InterruptedException();
+    return tryAcquire(arg) || doAcquireNanos(arg, nanosTimeout);
+}
+```
+
+当获取锁失败之后，会执行 doAcquireNanos 方法，下面是具体实现：
+
+```java
+private boolean doAcquireNanos(int arg, long nanosTimeout) throws InterruptedException {
+    if (nanosTimeout <= 0 L)
+        return false;
+
+    // 线程最晚结束时间
+    final long deadline = System.nanoTime() + nanosTimeout;
+    final Node node = addWaiter(Node.EXCLUSIVE);
+    boolean failed = true;
+    try {
+        for (;;) {
+            final Node p = node.predecessor();
+            if (p == head && tryAcquire(arg)) {
+                setHead(node);
+                p.next = null; // help GC
+                failed = false;
+                return true;
+            }
+            // 判断是否超时，如果超时就返回
+            nanosTimeout = deadline - System.nanoTime();
+            if (nanosTimeout <= 0 L)
+                return false;
+
+            // 这里如果设定了一个阈值，如果超时的时间比阈值小，就认为
+            // 当前线程没必要阻塞，再执行几次 for 循环估计就超时了
+            if (shouldParkAfterFailedAcquire(p, node) && nanosTimeout > spinForTimeoutThreshold)
+                LockSupport.parkNanos(this, nanosTimeout);
+
+            if (Thread.interrupted())
+                throw new InterruptedException();
+        }
+    } finally {
+        if (failed)
+            cancelAcquire(node);
+    }
+}
+```
+
+当线程超时返回时，还是会执行 cancelAcquire 方法，cancelAcquire 的逻辑已经在前面说过了，这里不再赘述。
+
+
 
 ## 简单应用
 
@@ -522,3 +794,58 @@ class Mutex implements Lock, java.io.Serializable {
 
 
 同步类在实现时一般都将自定义同步器（`sync`）定义为内部类，供自己使用；而同步类自己（`Mutex`）则实现某个接口，对外服务。当然，接口的实现要直接依赖sync，它们在语义上也存在某种对应关系！！而sync只用实现资源state的获取-释放方式`tryAcquire-tryRelelase`，至于线程的排队、等待、唤醒等，上层的AQS都已经实现好了，我们不用关心。
+
+### 自定义 compareAndSwapInt 实现
+
+```java
+import sun.misc.Unsafe;
+
+import java.lang.reflect.Field;
+
+/**
+ * Created by Jikai Zhang on 2017/4/8.
+ */
+public class CASIntTest {
+    private volatile int count = 0;
+
+    private static final Unsafe unsafe = getUnsafe();
+    private static final long offset;
+
+    // 获得 count 属性在 CASIntTest 中的偏移量（内存地址偏移）
+    static {
+        try {
+            offset = unsafe.objectFieldOffset(CASIntTest.class.getDeclaredField("count"));
+        } catch (NoSuchFieldException e) {
+            throw new Error(e);
+        }
+    }
+    
+    // Unsafe类包含一个私有的、名为theUnsafe的实例，我们可以通过Java反射窃取该变量。通过反射的方式获得 Unsafe 类
+    public static Unsafe getUnsafe() {
+        Unsafe unsafe = null;
+        try {
+            Field theUnsafe = Unsafe.class.getDeclaredField("theUnsafe");
+            theUnsafe.setAccessible(true);
+            unsafe = (Unsafe) theUnsafe.get(null);
+        } catch (NoSuchFieldException | IllegalAccessException e) {
+            e.printStackTrace();
+        }
+        return unsafe;
+    }
+
+    // 自增方法
+    public void increment() {
+        int previous = count;
+        unsafe.compareAndSwapInt(this, offset, previous, previous + 1);
+    }
+
+    public static void main(String[] args) {
+        CASIntTest casIntTest = new CASIntTest();
+        casIntTest.increment();
+        System.out.println(casIntTest.count);
+    }
+}
+```
+
+在 compareAndSwapInt 函数中，我们并没有传入 count 变量，那么函数是如何修改的 count 变量值？其实我们往 compareAndSwapInt 函数中传入了 count 变量在堆内存中的地址，函数直接修改了 count 变量所在内存区域。count 属性在堆内存中的地址是由 CASIntTest 实例的起始内存地址和 count 属性相对于起始内存的偏移量决定的。其中对象属性在对象中的偏移量通过 `objectFieldOffset` 函数获得，函数原型如下所示。该函数接受一个 Filed 类型的参数，返回该 Filed 属性在对象中的偏移量。
+
