@@ -48,7 +48,7 @@ static final class Node {
     // 标识节点当前在独占模式下
     static final Node EXCLUSIVE = null;
 
-    // ======== 下面的几个int常量是给waitStatus用的 ===========
+    // ======== waitStatus 线程等待状态的有效值 ===========
     /** waitStatus value to indicate thread has cancelled */
     // 代码此线程取消了争抢这个锁
     static final int CANCELLED =  1;
@@ -63,16 +63,17 @@ static final class Node {
     static final int PROPAGATE = -3;
     // =====================================================
 
-    // 取值为上面的1、-1、-2、-3，或者0(以后会讲到)
-    // 这么理解，暂时只需要知道如果这个值 大于0 代表此线程取消了等待，
-    //    ps: 半天抢不到锁，不抢了，ReentrantLock是可以指定timeouot的。。。
+    // 线程状态，合法值为上面 4 个值中的一个 ps: 半天抢不到锁，不抢了，ReentrantLock是可以指定timeout的。。。
     volatile int waitStatus;
     // 前驱节点的引用
     volatile Node prev;
     // 后继节点的引用
     volatile Node next;
-    // 这个就是线程本尊
+    // 当前节点所关联的线程
     volatile Thread thread;
+  
+    // 指向下一个在某个条件上等待的节点，或者指向 SHARE 节点，表明当前处于共享模式
+    Node nextWaiter;
   
     // 节点当前在共享模式下返回true
     final boolean isShared() {
@@ -80,11 +81,7 @@ static final class Node {
     }
 
     /**
-     * Returns previous node, or throws NullPointerException if null.
-     * Use when predecessor cannot be null.  The null check could
-     * be elided, but is present to help the VM.
-     *
-     * @return the predecessor of this node
+     * 返回前一个 Node 如果没有则抛出空指针异常
      */
     final Node predecessor() throws NullPointerException {
         Node p = prev;
@@ -127,7 +124,7 @@ static final class Node {
 
 不同的自定义同步器争用共享资源的方式也不同。**自定义同步器在实现时只需要实现共享资源 `state` 的获取与释放方式即可**，至于具体线程等待队列的维护（如获取资源失败入队/唤醒出队等），AQS已经在顶层实现好了。
 
-### 自定义同步器实现时主要实现以下几种方法：
+### 自定义同步器实现时主要实现以下几种方法
 
 - `isHeldExclusively()`：该线程是否正在独占资源。只有用到`condition`才需要去实现它。
 - `tryAcquire(int)`：独占方式。尝试**获取**资源，成功则返回true，失败则返回false。
@@ -848,5 +845,5 @@ public class CASIntTest {
 }
 ```
 
-在 compareAndSwapInt 函数中，我们并没有传入 count 变量，那么函数是如何修改的 count 变量值？其实我们往 compareAndSwapInt 函数中传入了 count 变量在堆内存中的地址，函数直接修改了 count 变量所在内存区域。count 属性在堆内存中的地址是由 CASIntTest 实例的起始内存地址和 count 属性相对于起始内存的偏移量决定的。其中对象属性在对象中的偏移量通过 `objectFieldOffset` 函数获得，函数原型如下所示。该函数接受一个 Filed 类型的参数，返回该 Filed 属性在对象中的偏移量。
+在 `compareAndSwapInt` 函数中，我们并没有传入 count 变量，那么函数是如何修改的 count 变量值？其实我们往 compareAndSwapInt 函数中传入了 count 变量在堆内存中的地址，函数直接修改了 count 变量所在内存区域。**count 属性在堆内存中的地址是由 CASIntTest 实例的起始内存地址和 count 属性相对于起始内存的偏移量决定的。**其中对象属性在对象中的偏移量通过 `objectFieldOffset` 函数获得，函数原型如下所示。该函数接受一个 Filed 类型的参数，返回该 Filed 属性在对象中的偏移量。
 
