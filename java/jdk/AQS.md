@@ -7,6 +7,7 @@
 
 ## AQS结构
 
+AQS 内部属性
 ```java
 // 头结点，可以看做 当前持有锁的线程 可能是最好理解的
 private transient volatile Node head;
@@ -26,7 +27,7 @@ private transient Thread exclusiveOwnerThread; //继承自AbstractOwnableSynchro
 
 ![](images/aqs/1001.png)
 
-AQS的等待队列，它维护了一个 `volatile int state`（代表共享资源）和一个FIFO线程等待队列（即CLH队列）（多线程争用资源被阻塞时会进入此队列）。这里 `volatile` 是核心关键词。
+AQS维护了一个 `volatile int state`（代表共享资源）和一个FIFO线程等待队列（即CLH队列）（多线程争用资源被阻塞时会进入此队列）。这里 `volatile` 是核心关键词。
 
 > CLH锁即Craig, Landin, and Hagersten (CLH)，CLH锁也是一种基于链表的可扩展、高性能、公平的自旋锁，线程只需要在本地自旋，查询前驱节点的状态，如果前驱节点释放了锁，就结束自旋。
 
