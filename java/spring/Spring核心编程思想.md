@@ -253,9 +253,13 @@ Spring实现了哪些编程模型？
 
 ![](images/spring_xiaomage/1007.png)
 
+面向对象编程
 
-
-
+- Aware
+    - ApplicationContextAware, EnvironmentAware...
+- 观察者模式：ApplicationListener...
+- 组合模式：CompositeCacheManager,CompositeComponentDefinition...
+- 模板模式：JdbcTemplate...
 
 
 
@@ -263,15 +267,15 @@ Spring实现了哪些编程模型？
 
 我们能从Spring Framework中学到哪些经验和教训呢？
 
-
+![核心价值](images/spring_xiaomage/1001.png)
 
 ### 12 面试题精选
 
-- 什么是 Spring Framework?
+#### 什么是 Spring Framework?
 
 答：Spring makes it easy to create Java enterprise applications. It provides everything you need to embrace the Java language in an enterprise environment, with support for Groovy and Kotlin as alternative languages on the JVM, and with the flexibility to create many kinds of architectures depending on an application’s needs.
 
-- Spring Framework 有哪些核心模块?
+#### Spring Framework 有哪些核心模块?
 
 答：spring-core：Spring 基础 API 模块，如资源管理，泛型处理 
 spring-beans：Spring Bean 相关，如依赖查找，依赖注入 
@@ -279,7 +283,11 @@ spring-aop：Spring AOP 处理，如动态代理，AOP 字节码提升
 spring-context：事件驱动、注解驱动，模块驱动等 
 spring-expression：Spring 表达式语言模块
 
-- Spring Framework 的优势和不足是什么?
+#### Spring Framework 的优势和不足是什么?
+
+???
+
+
 
 
 
@@ -288,14 +296,162 @@ spring-expression：Spring 表达式语言模块
 
 你可能对IoC有些误会？
 
+#### 什么是 IoC ?
+
+Wiki：In software engineering, inversion of control (IoC) is a programming principle. IoC inverts the flow of control as compared to traditional control flow. In IoC, custom-written portions of a computer program receive the flow of control from a generic framework. A software architecture with this design inverts control as compared to traditional procedural programming: in traditional programming, the custom code that expresses the purpose of the program calls into reusable libraries to take care of generic tasks, but with inversion of control, it is the framework that calls into the custom, or task-specific, code.
+
+#### IoC 的简史
+
+- 1983年，Richard E. Sweet 在《The Mesa Programming Environment》中提出“Hollywood Principle”(好莱坞原则)
+- 1988年，Ralph E. Johnson & Brian Foote 在《Designing Reusable Classes》中提出“Inversion of control”(控制反转)
+- 1996年，Michael Mattsson 在《Object-Oriented Frameworks, A survey of methodological issues》中将“Inversion of control”命名为 “Hollywood principle”
+- 2004年，Martin Fowler 在《Inversion of Control Containers and the Dependency Injection pattern》中提出了自己对 IoC 以及 DI的理解
+- 2005年，Martin Fowler 在 《InversionOfControl》对 IoC 做出进一步的说明
+
 ### 14  IoC主要实现策略
 
 面试官总问IoC和DI的区别，他真的理解吗？
 
-### 15  IoC容器的职责：IoC除了依赖注入，还涵盖哪些职责呢？
+#### 实现 IoC 的基础技术
+
+In object-oriented programming, there are several basic techniques to implement inversion of control. These are:
+
+- Using a service locator pattern：服务定位模式
+- Using dependency injection, for example
+    - Constructor injection
+    - Parameter injection
+    - Setter injection
+    - Interface injection
+- Using a contextualized lookup：上下文查找
+- Using template method design pattern：模板方法
+- Using strategy design pattern：策略模式
+
+#### 主要功能
+
+- 依赖查找
+- 依赖注入
+
+### 15  IoC容器的职责
+
+IoC除了依赖注入，还涵盖哪些职责呢？
+
+#### Wiki
+
+Inversion of control serves the following design purposes:
+
+- To decouple the execution of a task from implementation.
+- To focus a module on the task it is designed for.
+- To free modules from assumptions about how other systems do what they do and instead rely on contracts.
+- To prevent side effects when replacing a module.
+
+   Inversion of control is sometimes facetiously referred to as the "Hollywood Principle: Don't call us, we'll call you".”
+
+#### 小马哥
+
+- 通用职责
+
+- 依赖处理
+    - 依赖查找
+    - 依赖注入
+- 生命周期管理
+    - 容器
+    - 托管的资源(Java Beans 或其他资源)
+- 配置
+    - 容器
+    - 外部化配置
+    - 托管的资源(Java Beans 或其他资源)
+
 ### 16  除了Spring，还有其它的IOC容器实现吗？
-### 17  传统IoC容器实现：JavaBeans也是IoC容器吗？
-### 18  轻量级IoC容器：如何界定IoC容器的“轻重”？
+
+#### 主要实现 
+
+- Java SE
+    - Java Beans
+    - Java ServiceLoader SPI
+    - JNDI(Java Naming and Directory Interface)
+
+- Java EE
+    - EJB(Enterprise Java Beans)
+    - Servlet
+
+- 开源
+
+    - Apache Avalon(http://avalon.apache.org/closed.html)
+
+    - PicoContainer(http://picocontainer.com/)
+
+    - Google Guice(https://github.com/google/guice)
+
+    - Spring Framework(https://spring.io/projects/spring-framework)
+
+### 17  传统IoC容器实现
+
+#### Java Beans 作为 IoC 容器
+
+- 特性
+    - 依赖查找
+    
+    - 生命周期管理
+    
+    - 配置元信息
+    
+    - 事件
+
+- 自定义
+
+    - 资源管理
+    
+    - 持久化
+    
+- 规范
+    -  JavaBeans:https://www.oracle.com/technetwork/java/javase/tech/index-jsp-138795.html
+    - BeanContext:https://docs.oracle.com/javase/8/docs/technotes/guides/beans/spec/beancontext.html
+
+示例：
+
+```java
+public class BeanInfoDemo {
+    public static void main(String[] args) throws IntrospectionException {
+        BeanInfo beanInfo = Introspector.getBeanInfo(Person.class, Object.class);
+        Stream.of(beanInfo.getPropertyDescriptors()).forEach(System.out::println);
+        // java.beans.PropertyDescriptor[name=age; propertyType=class java.lang.Integer; readMethod=public java.lang.Integer com.nousin.test.BeanInfoDemo$Person.getAge(); writeMethod=public void com.nousin.test.BeanInfoDemo$Person.setAge(java.lang.Integer)]
+        // java.beans.PropertyDescriptor[name=name; propertyType=class java.lang.String; readMethod=public java.lang.String com.nousin.test.BeanInfoDemo$Person.getName(); writeMethod=public void com.nousin.test.BeanInfoDemo$Person.setName(java.lang.String)]
+    }
+
+    static class Person {
+        private String name; // 姓名
+        private Integer age; // 年龄
+
+        public String getName() {
+            return name;
+        }
+        public void setName(String name) {
+            this.name = name;
+        }
+        public Integer getAge() {
+            return age;
+        }
+        public void setAge(Integer age) {
+            this.age = age;
+        }
+    }
+}
+```
+
+
+
+### 18  轻量级IoC容器
+
+如何界定IoC容器的“轻重”？
+
+
+
+
+
+
+
+
+
 ### 19  依赖查找 VS. 依赖注入：为什么Spring总会强调后者，而选择性忽视前者？
 ### 20  构造器注入 VS. Setter 注入：为什么Spring官方文档的解读会与作者的初心出现偏差？
 ### 21  面试题精选
