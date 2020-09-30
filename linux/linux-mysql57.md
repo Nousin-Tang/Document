@@ -81,13 +81,21 @@ groupadd mysql && useradd -r -g mysql mysql
 
 ## 创建用户
 ### 新建用户
+
 `CREATE USER '用户名'@'%' IDENTIFIED BY '密码';`
+
 ### 授权
+
 授权又有数据库给用户
+
 `GRANT ALL ON *.* TO '用户名'@'%';`
+
 授权指定的数据库给用户
+
 `GRANT ALL PRIVILEGES ON 数据库名.* TO '用户名'@'%' IDENTIFIED BY '密码' WITH GRANT OPTION;`
+
 ### 设置用户密码
+
 `SET PASSWORD FOR '用户名'@'%' = PASSWORD('用户密码');`
 
 
@@ -97,8 +105,8 @@ groupadd mysql && useradd -r -g mysql mysql
 `CREATE DATABASE IF NOT EXISTS 数据库名 DEFAULT CHARACTER SET utf8mb4 DEFAULT COLLATE utf8mb4_general_ci;`
 
 ### 数据库备份
-/usr/local/mysql/bin/mysqldump -h IP地址 -u用户名 -p'密码' -R -E 数据库名 > /home/mysqlBak/数据库名_bak_`date +"%Y%m%d_%H%M%S"`.sql
+`/usr/local/mysql/bin/mysqldump -h IP地址 -u用户名 -p'密码' -R -E 数据库名 > /home/mysqlBak/数据库名_bak_`date +"%Y%m%d_%H%M%S"`.sql`
 
 ### 数据库还原
-use 数据名; source /home/mysqlBak/xxx.sql;
+`use 数据名; source /home/mysqlBak/xxx.sql;`
 
