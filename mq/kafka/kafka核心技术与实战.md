@@ -1,6 +1,14 @@
 # Kafka核心技术与实战
 
-学习方法与目标：把Kafka官网通读几遍然后再实现一个实时日志收集系统（比如把服务器日志实时放入Kafka）。
+学习方法与目标：把[Kafka官网](https://kafka.apache.org/)通读几遍然后再实现一个实时日志收集系统（比如把服务器日志实时放入Kafka）。
+
+- 01-05 | Kafka入门 
+- 06-08 | Kafka的基本使用
+- 09-22 | 客户端实践及原理剖析
+- 23-27 | 深入Kafka内核
+- 28-39 | 管理与监控
+- 40-42 | 高级Kafka应用之流处理
+- 其他
 
 ## 01 | Kafka 介绍
 
@@ -1221,6 +1229,350 @@ while (true) {
 ```
 
 程序先是创建了一个 Map 对象，用于保存 Consumer 消费处理过程中要提交的分区位移，之后开始逐条处理消息，并构造要提交的位移值。这里构造 OffsetAndMetadata 对象，就是要提交下一条消息的位移。这里设置了一个计数器，每累计 100 条消息就统一提交一次位移。与调用无参的 commitAsync 不同，这里调用了带 Map 对象参数的 commitAsync 进行细粒度的位移提交。这样，这段代码就能够实现每处理 100 条消息就提交一次位移，不用再受 poll 方法返回的消息总数的限制了。
+
+## 19 | CommitFailedException异常怎么处理？
+
+> 所谓 CommitFailedException，顾名思义就是 Consumer 客户端在提交位移时出现了不可恢复的严重错误或异常。
+
+### 社区对该异常的最新解释
+
+```
+Commit cannot be completed since the group has already rebalanced and assigned the partitions to another member. This means that the time between subsequent calls to poll() was longer than the configured max.poll.interval.ms, which typically implies that the poll loop is spending too much time message processing. You can address this either by increasing max.poll.interval.ms or by reducing the maximum size of batches returned in poll() with max.poll.records.
+```
+
+这段话前半部分的意思是，本次提交位移失败了，原因是消费者组已经开启了 Rebalance 过程，并且将要提交位移的分区分配给了另一个消费者实例。出现这个情况的原因是，你的消费者实例连续两次调用 poll 方法的时间间隔超过了期望的 `max.poll.interval.ms` 参数值。这通常表明，你的消费者实例花费了太长的时间进行消息处理，耽误了调用 poll 方法。
+
+在后半部分，社区给出了两个相应的解决办法（即橙色字部分）：
+
+1. 增加期望的时间间隔 `max.poll.interval.ms` 参数值。
+2. 减少 poll 方法一次性返回的消息数量，即减少 `max.poll.records` 参数值。
+
+**CommitFailedException 异常通常发生在手动提交位移时**，即用户显式调用 KafkaConsumer.commitSync() 方法时。
+
+<!--自动commit失败由Kafka内部消化处理-->
+
+### 遭遇该异常
+
+#### 场景一
+
+当消息处理的总时间超过预设的 max.poll.interval.ms 参数值时，Kafka Consumer 端会抛出 CommitFailedException 异常。
+
+这是该异常最“正宗”的登场方式。你只需要写一个 Consumer 程序，使用 `KafkaConsumer.subscribe` 方法随意订阅一个主题，之后设置 Consumer 端参数 `max.poll.interval.ms=5` 秒，最后在循环调用 `KafkaConsumer.poll` 方法之间，插入 `Thread.sleep(6000)` 和手动提交位移，就可以成功复现这个异常了。
+
+```java
+Properties props = new Properties();
+// …
+props.put("max.poll.interval.ms", 5000);
+consumer.subscribe(Arrays.asList("test-topic"));
+
+while (true) {
+    ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
+    // 使用Thread.sleep模拟真实的消息处理逻辑
+    Thread.sleep(6000L);
+    consumer.commitSync();
+}
+```
+
+如果要防止这种场景下抛出异常，你需要简化你的消息处理逻辑。具体来说有 4 种方法。
+
+1. **缩短单条消息处理的时间**。比如，之前下游系统消费一条消息的时间是 100 毫秒，优化之后成功地下降到 50 毫秒，那么此时 Consumer 端的 TPS 就提升了一倍。
+2. **增加 Consumer 端允许下游系统消费一批消息的最大时长**。这取决于 Consumer 端参数 `max.poll.interval.ms` 的值。在最新版的 Kafka 中，该参数的默认值是 5 分钟。如果你的消费逻辑不能简化，那么提高该参数值是一个不错的办法。值得一提的是，Kafka 0.10.1.0 之前的版本是没有这个参数的，因此如果你依然在使用 0.10.1.0 之前的客户端 API，那么你需要增加 session.timeout.ms 参数的值。不幸的是，`session.timeout.ms` 参数还有其他的含义，因此增加该参数的值可能会有其他方面的“不良影响”，这也是社区在 0.10.1.0 版本引入 `max.poll.interval.ms` 参数，将这部分含义从 `session.timeout.ms` 中剥离出来的原因之一。
+3. **减少下游系统一次性消费的消息总数**。这取决于 Consumer 端参数 `max.poll.records` 的值。当前该参数的默认值是 500 条，表明调用一次 `KafkaConsumer.poll` 方法，最多返回 500 条消息。可以说，该参数规定了单次 poll 方法能够返回的消息总数的上限。如果前两种方法对你都不适用的话，降低此参数值是避免 `CommitFailedException` 异常最简单的手段。
+4. **下游系统使用多线程来加速消费**。这应该算是“最高级”同时也是最难实现的解决办法了。具体的思路就是，让下游系统手动创建多个消费线程处理 poll 方法返回的一批消息。之前你使用 Kafka Consumer 消费数据更多是单线程的，所以当消费速度无法匹及 Kafka Consumer 消息返回的速度时，它就会抛出 CommitFailedException 异常。如果是多线程，你就可以灵活地控制线程数量，随时调整消费承载能力，再配以目前多核的硬件条件，该方法可谓是防止 CommitFailedException 最高档的解决之道。事实上，很多主流的大数据流处理框架使用的都是这个方法，比如 Apache Flink 在集成 Kafka 时，就是创建了多个 KafkaConsumerThread 线程，自行处理多线程间的数据消费。不过，凡事有利就有弊，这个方法实现起来并不容易，特别是在多个线程间如何处理位移提交这个问题上，更是极容易出错。
+
+综合以上这 4 个处理方法，推荐首先尝试采用方法 1 来预防此异常的发生。优化下游系统的消费逻辑是百利而无一害的法子。
+
+首先，你需要弄清楚你的下游系统消费每条消息的平均延时是多少。比如你的消费逻辑是从 Kafka 获取到消息后写入到下游的 MongoDB 中，假设访问 MongoDB 的平均延时不超过 2 秒，那么你可以认为消息处理需要花费 2 秒的时间。如果按照 `max.poll.records` 等于 500 来计算，一批消息的总消费时长大约是 1000 秒，因此你的 Consumer 端的 `max.poll.interval.ms` 参数值就不能低于 1000 秒。如果你使用默认配置，那默认值 5 分钟显然是不够的，你将有很大概率遭遇 CommitFailedException 异常。将 `max.poll.interval.ms` 增加到 1000 秒以上的做法就属于上面的第 2 种方法。
+
+除了调整 `max.poll.interval.ms` 之外，你还可以选择调整 `max.poll.records` 值，减少每次 poll 方法返回的消息数。还拿刚才的例子来说，你可以设置 max.poll.records 值为 150，甚至更少，这样每批消息的总消费时长不会超过 300 秒（150*2=300），即 `max.poll.interval.ms` 的默认值 5 分钟。这种减少 `max.poll.records` 值的做法就属于上面提到的方法 3。
+
+#### 场景二
+
+> Standalone Consumer 的独立消费者。它没有消费者组的概念，每个消费者实例都是独立工作的，彼此之间毫无联系。但独立消费者的位移提交机制和消费者组是一样的，因此独立消费者的位移提交也必须遵守之前说的那些规定，比如独立消费者也要指定 group.id 参数才能提交位移。
+
+如果你的应用中同时出现了设置相同 group.id 值的消费者组程序和独立消费者程序，那么当独立消费者程序手动提交位移时，Kafka 就会立即抛出 CommitFailedException 异常，因为 Kafka 无法识别这个具有相同 group.id 的消费者实例，于是就向它返回一个错误，表明它不是消费者组内合法的成员。
+
+## 20 | 多线程开发消费者实例
+
+### Kafka Java Consumer 设计原理
+
+谈到 Java Consumer API，最重要的当属它的入口类 KafkaConsumer 了。我们说 KafkaConsumer 是单线程的设计，严格来说这是不准确的。因为，从 **Kafka 0.10.1.0 版本**开始，KafkaConsumer 就变为了双线程的设计，即**用户主线程和心跳线程**。
+
+**所谓用户主线程，就是你启动 Consumer 应用程序 main 方法的那个线程，而新引入的心跳线程（Heartbeat Thread）只负责定期给对应的 Broker 机器发送心跳请求，以标识消费者应用的存活性（liveness）。**引入这个心跳线程还有一个目的，那就是期望它能将心跳频率与主线程调用 KafkaConsumer.poll 方法的频率分开，从而解耦真实的消息处理逻辑与消费者组成员存活性管理。
+
+不过，虽然有心跳线程，但实际的消息获取逻辑依然是在用户主线程中完成的。因此，在消费消息的这个层面上，我们依然可以安全地认为 KafkaConsumer 是单线程的设计。
+
+老版本（Scala Consumer 的 API） Consumer 是多线程的架构，每个 Consumer 实例在内部为所有订阅的主题分区创建对应的消息获取线程，也称 Fetcher 线程。老版本 Consumer 同时也是阻塞式的（blocking），Consumer 实例启动后，内部会创建很多阻塞式的消息获取迭代器。但在很多场景下，Consumer 端是有非阻塞需求的，比如在流处理应用中执行过滤（filter）、连接（join）、分组（group by）等操作时就不能是阻塞式的。基于这个原因，社区为新版本 Consumer 设计了单线程 + 轮询的机制。这种设计能够较好地实现非阻塞式的消息获取。
+
+除此之外，单线程的设计能够简化 Consumer 端的设计。Consumer 获取到消息后，处理消息的逻辑是否采用多线程，完全由你决定。这样，你就拥有了把消息处理的多线程管理策略从 Consumer 端代码中剥离的权利。
+
+### 多线程方案
+
+首先要明确的是，KafkaConsumer 类不是线程安全的 (thread-safe)。所有的网络 I/O 处理都是发生在用户主线程中，因此在使用过程中必须要确保线程安全。简单来说，就是不能在多个线程中共享同一个 KafkaConsumer 实例，否则程序会抛出 ConcurrentModificationException 异常。
+
+<!--当然这也不是绝对的。KafkaConsumer 中有个方法是例外的，wakeup()，你可以在其他线程中安全地调用 KafkaConsumer.wakeup() 来唤醒 Consumer。-->
+
+1. **消费者程序启动多个线程，每个线程维护专属的 KafkaConsumer 实例，负责完整的消息获取、消息处理流程**。如下图所示：![](images/1011.png)
+2. **消费者程序使用单或多线程获取消息，同时创建多个消费线程执行消息处理逻辑。**获取消息的线程可以是一个，也可以是多个，每个线程维护专属的 KafkaConsumer 实例，处理消息则交由 *特定的线程* 池来做，从而实现消息获取与消息处理的真正解耦。架构如下图所示：![](images/1012.png)
+
+比如一个完整的消费者应用程序要做的事情是 1、2、3、4、5，那么方案 1 的思路是粗粒度化的工作划分，也就是说方案 1 会创建多个线程，每个线程完整地执行 1、2、3、4、5，以实现并行处理的目标，它不会进一步分割具体的子任务；而方案 2 则更细粒度化，它会将 1、2 分割出来，用单线程（也可以是多线程）来做，对于 3、4、5，则用另外的多个线程来做。
+
+两种方案的优缺点
+
+![](images/1013.png)
+
+#### 方案 1
+
+优势
+
+1. 实现起来简单，因为它比较符合目前我们使用 Consumer API 的习惯。我们在写代码的时候，使用多个线程并在每个线程中创建专属的 KafkaConsumer 实例就可以了。
+2. 多个线程之间彼此没有任何交互，省去了很多保障线程安全方面的开销。
+3. 由于每个线程使用专属的 KafkaConsumer 实例来执行消息获取和消息处理逻辑，因此，Kafka 主题中的每个分区都能保证只被一个线程处理，这样就很容易实现分区内的消息消费顺序。这对在乎事件先后顺序的应用场景来说，是非常重要的优势。
+
+不足
+
+1. 每个线程都维护自己的 KafkaConsumer 实例，必然会占用更多的系统资源，比如内存、TCP 连接等。
+2. 这个方案能使用的线程数受限于 Consumer 订阅主题的总分区数。我们知道，在一个消费者组中，每个订阅分区都只能被组内的一个消费者实例所消费。假设一个消费者组订阅了 100 个分区，那么方案 1 最多只能扩展到 100 个线程，多余的线程无法分配到任何分区，只会白白消耗系统资源。当然了，这种扩展性方面的局限可以被多机架构所缓解。除了在一台机器上启用 100 个线程消费数据，我们也可以选择在 100 台机器上分别创建 1 个线程，效果是一样的。因此，如果你的机器资源很丰富，这个劣势就不足为虑了。
+3. 每个线程完整地执行消息获取和消息处理逻辑。一旦消息处理逻辑很重，造成消息处理速度慢，就很容易出现不必要的 Rebalance，从而引发整个消费者组的消费停滞。这个劣势你一定要注意。
+
+#### 方案 2
+
+优势
+
+1. 高伸缩性，就是说我们可以独立地调节消息获取的线程数，以及消息处理的线程数，而不必考虑两者之间是否相互影响。如果你的消费获取速度慢，那么增加消费获取的线程数即可；如果是消息的处理速度慢，那么增加 Worker 线程池线程数即可。
+
+不足
+
+1. 它的实现难度要比方案 1 大得多，毕竟它有两组线程，你需要分别管理它们。
+2. 因为该方案将消息获取和消息处理分开了，也就是说获取某条消息的线程不是处理该消息的线程，因此无法保证分区内的消费顺序。举个例子，比如在某个分区中，消息 1 在消息 2 之前被保存，那么 Consumer 获取消息的顺序必然是消息 1 在前，消息 2 在后，但是，后面的 Worker 线程却有可能先处理消息 2，再处理消息 1，这就破坏了消息在分区中的顺序。还是那句话，如果你在意 Kafka 中消息的先后顺序，方案 2 的这个劣势是致命的。
+3. 方案 2 引入了多组线程，使得整个消息消费链路被拉长，最终导致正确位移提交会变得异常困难，结果就是可能会出现消息的重复消费。如果你在意这一点，那么我不推荐你使用方案 2。
+
+### 实现代码示例
+
+```java
+// 方案 1 核心代码示例
+public class KafkaConsumerRunner implements Runnable {
+  private final AtomicBoolean closed = new AtomicBoolean(false);
+  private final KafkaConsumer consumer;
+
+  public void run() {
+    try {
+      consumer.subscribe(Arrays.asList("topic"));
+      while (!closed.get()) {
+        ConsumerRecords records = consumer.poll(Duration.ofMillis(10000));
+        //  执行消息处理逻辑
+      }
+    } catch (WakeupException e) {
+      // Ignore exception if closing
+      if (!closed.get()) throw e;
+    } finally {
+      consumer.close();
+    }
+  }
+
+  // Shutdown hook which can be called from a separate thread
+  public void shutdown() {
+    closed.set(true);
+    consumer.wakeup();
+  }
+}
+```
+
+这段代码创建了一个 Runnable 类，表示执行消费获取和消费处理的逻辑。每个 KafkaConsumerRunner 类都会创建一个专属的 KafkaConsumer 实例。在实际应用中，你可以创建多个 KafkaConsumerRunner 实例，并依次执行启动它们。
+
+
+
+```java
+// 方案 2 核心代码示例
+private final KafkaConsumer<String, String> consumer;
+private ExecutorService executors;
+// ...
+
+private int workerNum = ...;
+executors = new ThreadPoolExecutor(
+  workerNum, workerNum, 0L, TimeUnit.MILLISECONDS,
+  new ArrayBlockingQueue<>(1000), 
+  new ThreadPoolExecutor.CallerRunsPolicy());
+
+// ...
+while (true)  {
+  ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
+  for (final ConsumerRecord record : records) {
+    executors.submit(new Worker(record));
+  }
+}
+```
+
+这段代码最重要的地方是最后一行：当 Consumer 的 poll 方法返回消息后，由专门的线程池来负责处理具体的消息。调用 poll 方法的主线程不负责消息处理逻辑，这样就实现了方案 2 的多线程架构。
+
+## 21 | Java 消费者是如何管理TCP连接的?
+
+Kafka 的网络传输是基于 TCP 协议的
+
+### 何时创建 TCP 连接？
+
+消费者端主要的程序入口是 KafkaConsumer 类。**和生产者不同的是，构建 KafkaConsumer 实例时是不会创建任何 TCP 连接的**，也就是说，当你执行完 new KafkaConsumer(properties) 语句后，你会发现，没有 Socket 连接被创建出来。**KafkaConsumer 的 TCP 连接是在调用 KafkaConsumer.poll 方法时被创建的。**
+
+再细粒度地说，在 poll 方法内部有 3 个时机可以创建 TCP 连接。
+
+1. 发起 FindCoordinator 请求时。
+消费者端有个组件叫协调者（Coordinator），它驻留在 Broker 端的内存中，负责消费者组的组成员管理和各个消费者的位移提交管理。当消费者程序首次启动调用 poll 方法时，它需要向 **Kafka 集群中当前负载最小（待发送请求最少）的那台 Broker** 发送一个名为 FindCoordinator 的请求，希望 Kafka 集群告诉它哪个 Broker 是管理它的协调者。
+2. 连接协调者时。
+Broker 处理完上一步发送的 FindCoordinator 请求之后，会返还对应的响应结果（Response），显式地告诉消费者哪个 Broker 是真正的协调者，因此在这一步，消费者知晓了真正的协调者后，会创建连向该 Broker 的 Socket 连接。只有成功连入协调者，协调者才能开启正常的组协调操作，比如加入组、等待组分配方案、心跳请求处理、位移获取、位移提交等。
+3. 消费数据时。
+消费者会为每个要消费的分区创建与该分区领导者副本所在 Broker 连接的 TCP。举个例子，假设消费者要消费 5 个分区的数据，这 5 个分区各自的领导者副本分布在 4 台 Broker 上，那么该消费者在消费时会创建与这 4 台 Broker 的 Socket 连接。
+
+### 创建多少个 TCP 连接？
+
+消费者程序会创建 3 类 TCP 连接：
+
+1. 确定协调者和获取集群元数据。
+2. 连接协调者，令其执行组成员管理操作。
+3. 执行实际的消息获取。
+
+> 当第三类 TCP 连接成功创建后，消费者程序就会废弃第一类 TCP 连接
+
+### 何时关闭 TCP 连接？
+
+消费者关闭 Socket 也分为**主动关闭**和 **Kafka 自动关闭**。
+
+- 主动关闭是指你显式地调用消费者 API 的方法去关闭消费者，具体方式就是手动调用 KafkaConsumer.close() 方法，或者是执行 Kill 命令，不论是 Kill -2 还是 Kill -9；
+
+- Kafka 自动关闭是由消费者端参数 connection.max.idle.ms 控制的，该参数现在的默认值是 9 分钟，即如果某个 Socket 连接上连续 9 分钟都没有任何请求“过境”的话，那么消费者会强行“杀掉”这个 Socket 连接。
+
+### 可能的问题
+
+第一类 TCP 连接仅仅是为了首次获取元数据而创建的，后面就会被废弃掉。最根本的原因是，消费者在启动时还不知道 Kafka 集群的信息，只能使用一个“假”的 ID 去注册，即使消费者获取了真实的 Broker ID，它依旧无法区分这个“假”ID 对应的是哪台 Broker，因此也就无法重用这个 Socket 连接，只能再重新创建一个新的连接。
+
+为什么会出现这种情况呢？主要是因为目前 Kafka 仅仅使用 ID 这一个维度的数据来表征 Socket 连接信息。这点信息明显不足以确定连接的是哪台 Broker，也许在未来，社区应该考虑使用 < 主机名、端口、ID> 三元组的方式来定位 Socket 资源，这样或许能够让消费者程序少创建一些 TCP 连接。
+
+反正 Kafka 有定时关闭机制，这算多大点事呢？其实，在实际场景中，我见过很多将 connection.max.idle.ms 设置成 -1，即禁用定时关闭的案例，如果是这样的话，这些 TCP 连接将不会被定期清除，只会成为永久的“僵尸”连接。
+
+## 22 | 消费者组消费进度监控都怎么实现？
+
+> 所谓滞后程度（消费者 Lag 或 Consumer Lag），就是指消费者当前落后于生产者的程度。**在实际业务场景中必须时刻关注消费者的消费进度。**
+
+### 监控方法
+
+1. 使用 Kafka 自带的命令行工具 kafka-consumer-groups 脚本。
+2. 使用 Kafka Java Consumer API 编程。
+3. 使用 Kafka 自带的 JMX 监控指标。
+
+#### Kafka 自带命令
+
+使用 Kafka 自带的命令行工具 bin/kafka-consumer-groups.sh(bat)。**kafka-consumer-groups 脚本是 Kafka 为我们提供的最直接的监控消费者消费进度的工具。**
+
+使用 kafka-consumer-groups 脚本很简单。该脚本位于 Kafka 安装目录的 bin 子目录下，我们可以通过下面的命令来查看某个给定消费者的 Lag 值：
+
+```bash
+$ bin/kafka-consumer-groups.sh --bootstrap-server <Kafka broker连接信息> --describe --group <group名称>
+```
+
+Kafka 连接信息就是 < 主机名：端口 > 对，而 group 名称就是你的消费者程序中设置的 group.id 值。
+
+例如：
+
+![](images/1014.png)
+
+首先，它会按照消费者组订阅主题的分区进行展示，每个分区一行数据；其次，除了主题、分区等信息外，它会汇报每个分区当前最新生产的消息的位移值（即 LOG-END-OFFSET 列值）、该消费者组当前最新消费消息的位移值（即 CURRENT-OFFSET 值）、LAG 值（前两者的差值）、消费者实例 ID、消费者连接 Broker 的主机名以及消费者的 CLIENT-ID 信息。
+
+在这些数据中，最关心的当属 LAG 列的值了，图中每个分区的 LAG 值大约都是 60 多万，这表明，在我的这个测试中，消费者组远远落后于生产者的进度。理想情况下，我们希望该列所有值都是 0，因为这才表明我的消费者完全没有任何滞后。
+
+<!--lag < 0，可能出现丢数据情况-->
+
+有的时候，运行这个脚本可能会出现下面这种情况，如下图所示：
+
+![](images/1015.png)
+
+很容易发现它和前面那张图输出的区别，即 CONSUMER-ID、HOST 和 CLIENT-ID 列没有值！如果碰到这种情况，你不用惊慌，这是因为我们运行 kafka-consumer-groups 脚本时没有启动消费者程序。
+
+
+
+还可能出现的一种情况是该命令压根不返回任何结果。此时，你也不用惊慌，这是因为你使用的 Kafka 版本比较老，kafka-consumer-groups 脚本还不支持查询非 active 消费者组。一旦碰到这个问题，你可以选择升级你的 Kafka 版本，也可以采用接下来说的其他方法来查询。
+
+#### Kafka Java Consumer API
+
+社区提供的 Java Consumer API 分别提供了查询当前分区最新消息位移和消费者组最新消费消息位移两组方法，我们使用它们就能计算出对应的 Lag。
+
+下面这段代码（Kafka 2.0.0 及以上的版本）展示了如何利用 Consumer 端 API 监控给定消费者组的 Lag 值：
+
+```java
+public static Map<TopicPartition, Long> lagOf(String groupID, String bootstrapServers) 
+  throws TimeoutException {
+  Properties props = new Properties();
+  props.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+  try (AdminClient client = AdminClient.create(props)) {
+    // 1. 获取给定消费者组的最新消费消息的位移
+    ListConsumerGroupOffsetsResult result = client.listConsumerGroupOffsets(groupID);
+    try {
+      Map<TopicPartition, OffsetAndMetadata> consumedOffsets =
+        result.partitionsToOffsetAndMetadata().get(10, TimeUnit.SECONDS);
+      props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false); // 禁止自动提交位移
+      props.put(ConsumerConfig.GROUP_ID_CONFIG, groupID);
+      props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+      props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+      try (final KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
+        // 2. 获取订阅分区的最新消息位移
+        Map<TopicPartition, Long> endOffsets = consumer.endOffsets(consumedOffsets.keySet());
+        // 3. 执行相应的减法操作，获取 Lag 值并封装进一个 Map 对象
+        return endOffsets.entrySet().stream()
+          .collect(Collectors.toMap(entry -> entry.getKey(), 
+                  entry -> entry.getValue() - consumedOffsets.get(entry.getKey()).offset()));
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      // 处理中断异常
+      // ...
+      return Collections.emptyMap();
+    } catch (ExecutionException e) {
+      // 处理ExecutionException
+      // ...
+      return Collections.emptyMap();
+    } catch (TimeoutException e) {
+      throw new TimeoutException("Timed out when getting lag for consumer group " + groupID);
+    }
+  }
+}
+```
+
+#### Kafka JMX 监控指标
+
+**集成性最好**
+
+Kafka 消费者提供了一个名为 `kafka.consumer:type=consumer-fetch-manager-metrics,client-id=“{client-id}”`的 JMX 指标，里面有很多属性。其中 `records-lag-max` 和 `records-lead-min`，它们分别表示此消费者在测试窗口时间内曾经达到的最大的 Lag 值和最小的 Lead 值。这里的 **Lead 值是指消费者最新消费消息的位移与分区当前第一条消息位移的差值。lead越小意味着 consumer 消费的消息越来越接近被删除的边缘**。很显然，**Lag 和 Lead 是一体的两个方面：Lag 越大的话，Lead 就越小，反之也是同理。**
+
+其实社区引入 Lead 的原因是，只看 Lag 的话，我们也许不能及时意识到可能出现的严重问题。
+
+试想一下，监控到 Lag 越来越大，可能只会给你一个感受，那就是消费者程序变得越来越慢了，至少是追不上生产者程序了，除此之外，你可能什么都不会做。毕竟，有时候这也是能够接受的。但反过来，一旦你监测到 Lead 越来越小，甚至是快接近于 0 了，你就一定要小心了，这可能预示着消费者端要丢消息了。
+
+Kafka 的消息是有留存时间设置的，默认是 1 周，也就是说 Kafka 默认删除 1 周前的数据。倘若你的消费者程序足够慢，慢到它要消费的数据快被 Kafka 删除了，这时你就必须立即处理，否则一定会出现消息被删除，从而导致消费者程序重新调整位移值的情形。
+
+这可能产生两个后果：
+
+1. 消费者从头消费一遍数据
+2. 消费者从最新的消息位移处开始消费，之前没来得及消费的消息全部被跳过了，从而造成丢消息的假象。
+
+这两种情形都是不可忍受的，因此必须有一个 JMX 指标，清晰地表征这种情形，这就是引入 Lead 指标的原因。
+
+
+
+使用 JConsole 工具监控此（**consumer 端的**） JMX 指标图如下：
+
+![](images/1016.png)
+
+从这张图片中，我们可以看到，client-id 为 consumer-1 的消费者在给定的测量周期内最大的 Lag 值为 714202，最小的 Lead 值是 83，这说明此消费者有很大的消费滞后性。
+
+**Kafka 消费者还在分区级别提供了额外的 JMX 指标，用于单独监控分区级别的 Lag 和 Lead 值。**JMX 名称为：`kafka.consumer:type=consumer-fetch-manager-metrics,partition=“{partition}”,topic=“{topic}”,client-id=“{client-id}”`。
+
+![](images/1017.png)
+
+分区级别的 JMX 指标中多了 records-lag-avg 和 records-lead-avg 两个属性，可以计算平均的 Lag 值和 Lead 值。
+
+
+
+
+
+
 
 
 
