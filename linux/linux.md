@@ -7,18 +7,32 @@
 
 ### 关闭端口号
 ```
+# iptable
 iptables -A INPUT -p tcp --drop 端口号 -j DROP
 iptables -A OUTPUT -p tcp --dport 端口号 -j DROP
+
+# firewall
+firewall-cmd --zone=public --remove-port=9930/tcp --permanent
 ```
 
 ### 打开端口号
 ```
+# iptable
 iptables -I INPUT -ptcp --dport 端口号 -j ACCEPT
 iptables -I OUTPUT -ptcp --dport 端口号 -j ACCEPT
+
+# firewall
+firewall-cmd --zone=public --add-port=9930/tcp --permanent
 ```
 
 ### 保存修改
-`service iptables save`
+```
+# iptables
+service iptables save
+
+# firewall
+firewall-cmd --reload
+```
 
 ## 文件操作
 
@@ -34,3 +48,10 @@ rm -f /var/log/httpd/access.log
 
 ## 查看端口号占用情况
 `netstat -pan | grep 8080`
+
+
+## 发布 jar
+```
+# 
+nohup java -jar /home/jar/xxx.jar  > /home/jar/xxx.log 2>&1 &
+```
