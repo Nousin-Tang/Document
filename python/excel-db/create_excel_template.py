@@ -12,20 +12,20 @@ from ctypes import *
 # 导入：python -m pip install pypiwin32
 import win32com.client as win32
 
-# 工程目录(E:\project\NewRetailing\01 Development\03 Code\python)
+# 改 Python 文件再工程中的目录
 PROJECT_ROOT = os.path.dirname(os.path.realpath(__file__))
 
-# E:\project\NewRetailing\01 Development
+# 获取工程目录
 root_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
-# E:\project\NewRetailing\01 Development\01 Requirements\国际化翻译
+# 获取翻译文件的目录
 source_path = root_path + os.sep + "01 Requirements" + os.sep + "国际化翻译"
-# E:\project\NewRetailing\01 Development\01 Requirements\国际化翻译\excel_template
+# 获取模板文件目录
 target_path = source_path + os.sep + "excel_template"
 
 # 模板文件名称多语言文件
-excel_name_file_path = source_path + os.sep + '9-Dict字典表-翻译.xlsx'
+excel_name_file_path = source_path + os.sep + 'xxx-翻译.xlsx'
 # 模板内容多语言文件
-excel_content_file_path = source_path + os.sep + '8-页面导入导出Excel模板-翻译.xlsx'
+excel_content_file_path = source_path + os.sep + 'xxx-模板-翻译.xlsx'
 # 生成 Excel 模板存放位置
 excel_template_save_path = target_path
 
@@ -33,45 +33,17 @@ excel_template_save_path = target_path
 zh_key = 0
 # 英语
 en_key = 1
-# 阿语
-ar_key = 2
-# 法语
-fr_key = 3
-# 俄语
-ru_key = 4
-# 西语
-es_key = 5
-# 斯里兰卡
-lk_key = 6
-# 越语
-vi_key = 7
 
 # 语言简称
 zh_ = 'zh'
 en_ = 'en'
-ar_ = 'ar'
-fr_ = 'fr'
-ru_ = 'ru'
-es_ = 'es'
-lk_ = 'lk'
-vi_ = 'vi'
 
 # 语言简称集合(生成的模板 按照给定的语言生成)
-# lang_names = [zh_, en_, ar_, fr_, ru_, es_]
+# lang_names = [zh_, en_]
 lang_names = [zh_]
 
 # 是否删除旧文件
 delete_old_file = False
-
-# 系统名称
-sys_marketing = 'marketing'
-sys_store = 'store'
-sys_ams = 'ams'
-sys_base = 'base'
-sys_wbs = 'wbs'
-
-# 系统名称集合
-systems = (sys_marketing, sys_store, sys_ams, sys_base, sys_wbs)
 
 # 生成的文件路径
 generate_file_path = []
@@ -82,7 +54,7 @@ generate_file_path = []
 class ExcelName:
 
     def __init__(self, system, exl_type, zh, en, es, ar, fr, ru):
-        # 系统（marketing, store, ams, base, wbs）
+        # 系统
         self.system = system
         # 模板类型：1-导入模板，2-导出模板
         self.exl_type = exl_type
