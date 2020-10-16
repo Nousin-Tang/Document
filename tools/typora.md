@@ -19,4 +19,9 @@ blockquote {
 blockquote strong {
   color: #e84a4a
 }
+
+em {
+	font-style: italic;
+	font-weight: 600;
+}
 ```
