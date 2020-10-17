@@ -1926,7 +1926,9 @@ ZooKeeper 本身的 API 提供了同步写和异步写两种方式。之前控�
 
 水位一词多用于流式处理领域，比如，Spark Streaming 或 Flink 框架中都有水位的概念。
 
-Kafka 的水位不是时间戳，更与时间无关。它是**和位置信息绑定的**，具体来说，它是**用消息位移来表征**的。另外，Kafka 源码使用的表述是高水位。值得注意的是，Kafka 中也有低水位（Low Watermark），它是与 Kafka 删除消息相关联的概念。
+Kafka 的水位不是时间戳，更与时间无关。它是**和位置信息绑定的**，具体来说，它是**用消息位移来表征**的。另外，Kafka 源码使用的表述是高水位。
+
+<!--值得注意的是，Kafka 中也有低水位（Low Watermark），它是与 Kafka 删除消息相关联的概念。-->
 
 ### 高水位的作用
 
@@ -1952,6 +1954,635 @@ Kafka 的水位不是时间戳，更与时间无关。它是**和位置信息绑
 Broker 0 上保存了某分区的 Leader 副本和所有 Follower 副本的 LEO 值，而 Broker 1 上仅仅保存了该分区的某个 Follower 副本。Kafka 把 Broker 0 上保存的这些 Follower 副本又称为**远程副本（Remote Replica）**。*Kafka 副本机制在运行过程中，会更新 Broker 1 上 Follower 副本的高水位和 LEO 值，同时也会更新 Broker 0 上 Leader 副本的高水位和 LEO I以及所有远程副本的 LEO，但它不会更新远程副本的高水位值，也就是我在图中标记为灰色的部分*。
 
 为什么要在 Broker 0 上保存这些远程副本呢？其实，它们的主要作用是，**帮助 Leader 副本确定其高水位，也就是分区高水位**。
+
+![](images/1037.png)
+
+与 Leader 副本保持同步，判断的条件有两个
+
+1. 该远程 Follower 副本在 ISR 中。
+2. 该远程 Follower 副本 LEO 值落后于 Leader 副本 LEO 值的时间，不超过 Broker 端参数 `replica.lag.time.max.ms` 的值。如果使用默认值的话，就是不超过 10 秒。
+
+有些时候，会发生这样的情况：即 Follower 副本已经“追上”了 Leader 的进度，却不在 ISR 中，比如某个刚刚重启回来的副本。如果 Kafka 只判断第 1 个条件的话，就可能出现某些副本具备了“进入 ISR”的资格，但却尚未进入到 ISR 中的情况。此时，分区高水位值就可能超过 ISR 中副本 LEO，而高水位 > LEO 的情形是不被允许的。
+
+下面从 Leader 副本和 Follower 副本两个维度，来总结一下高水位和 LEO 的更新机制。
+
+#### Leader 副本
+
+处理生产者请求的逻辑如下：
+
+- 写入消息到本地磁盘。
+- 更新分区高水位值。
+
+    i. 获取 Leader 副本所在 Broker 端保存的所有远程副本 LEO 值（LEO-1，LEO-2，……，LEO-n）。
+
+    ii. 获取 Leader 副本高水位值：currentHW。
+
+    iii. 更新 currentHW = max{currentHW, min（LEO-1, LEO-2, ……，LEO-n）}。
+
+处理 Follower 副本拉取消息的逻辑如下：
+
+- 读取磁盘（或页缓存）中的消息数据。
+- 使用 Follower 副本发送请求中的位移值更新远程副本 LEO 值。
+- 更新分区高水位值（具体步骤与处理生产者请求的步骤相同）。
+
+#### Follower 副本
+
+从 Leader 拉取消息的处理逻辑如下：
+
+- 写入消息到本地磁盘。
+
+- 更新 LEO 值。
+
+- 更新高水位值。
+
+    i.  获取 Leader 发送的高水位值：currentHW。
+
+    ii. 获取步骤 2 中更新过的 LEO 值：currentLEO。
+
+    iii. 更新高水位为 min(currentHW, currentLEO)。
+
+### 副本同步机制解析
+
+当生产者发送一条消息时，Leader 和 Follower 副本对应的高水位是怎么被更新的呢？我们一一来看下面这些图片。
+
+首先是初始状态。下面这张图中的 remote LEO 就是刚才的远程副本的 LEO 值。在初始状态时，所有值都是 0。
+
+![](images/1038.png)
+
+当生产者给主题分区发送一条消息后，但写入了本地磁盘，状态变更为：
+
+![](images/1039.png)
+
+此时，Leader 副本成功将消息写入了本地磁盘，故 LEO 值被更新为 1。Follower 再次尝试从 Leader 拉取消息。和之前不同的是，这次有消息可以拉取了，因此状态进一步变更为：
+
+![](images/1040.png)
+
+这时，Follower 副本也成功地更新 LEO 为 1。此时，Leader 和 Follower 副本的 LEO 都是 1，但各自的高水位依然是 0，还没有被更新。它们需要在下一轮的拉取中被更新，如下图所示：
+
+![](images/1041.png)
+
+在新一轮的拉取请求中，由于位移值是 0 的消息已经拉取成功，因此 Follower 副本这次请求拉取的是位移值 =1 的消息。Leader 副本接收到此请求后，更新远程副本 LEO 为 1，然后更新 Leader 高水位为 1。做完这些之后，它会将当前已更新过的高水位值 1 发送给 Follower 副本。Follower 副本接收到以后，也将自己的高水位值更新成 1。至此，一次完整的消息同步周期就结束了。事实上，Kafka 就是利用这样的机制，实现了 Leader 和 Follower 副本之间的同步。
+
+### Leader Epoch
+
+Follower 副本的高水位更新需要一轮额外的拉取请求才能实现。如果把上面那个例子扩展到多个 Follower 副本，情况可能更糟，也许需要多轮拉取请求。也就是说，Leader 副本高水位更新和 Follower 副本高水位更新在时间上是存在错配的。这种错配是很多“数据丢失”或“数据不一致”问题的根源。基于此，社区在 **0.11 版本**正式引入了 Leader Epoch 概念，来规避因高水位更新错配导致的各种不一致问题。
+
+所谓 Leader Epoch，我们大致可以认为是 Leader 版本。它由两部分数据组成。
+
+1. Epoch。一个单调增加的版本号。每当副本领导权发生变更时，都会增加该版本号。小版本号的 Leader 被认为是过期 Leader，不能再行使 Leader 权力。
+2. 起始位移（Start Offset）。Leader 副本在该 Epoch 值上写入的首条消息的位移。
+
+例：假设现在有两个 Leader Epoch<0, 0> 和 <1, 120>，那么，第一个 Leader Epoch 表示版本号是 0，这个版本的 Leader 从位移 0 开始保存消息，一共保存了 120 条消息。之后，Leader 发生了变更，版本号增加到 1，新版本的起始位移是 120。
+
+Kafka Broker 会在内存中为每个分区都缓存 Leader Epoch 数据，同时它还会定期地将这些信息持久化到一个 checkpoint 文件中。当 Leader 副本写入消息到磁盘时，Broker 会尝试更新这部分缓存。如果该 Leader 是首次写入消息，那么 Broker 会向缓存中增加一个 Leader Epoch 条目，否则就不做更新。这样，每次有 Leader 变更时，新的 Leader 副本会查询这部分缓存，取出对应的 Leader Epoch 的起始位移，以避免数据丢失和不一致的情况。
+
+Leader Epoch 是如何防止数据丢失的
+
+<img src="images/1042.png" style="zoom:33%;" />
+
+解释一下，单纯依赖高水位是怎么造成数据丢失的。开始时，副本 A 和副本 B 都处于正常状态，A 是 Leader 副本。某个使用了默认 acks 设置的生产者程序向 A 发送了两条消息，A 全部写入成功，此时 Kafka 会通知生产者说两条消息全部发送成功。
+
+假设 Leader 和 Follower 都写入了这两条消息，而且 Leader 副本的高水位也已经更新了，但 Follower 副本高水位还未更新——这是可能出现的。还记得吧，Follower 端高水位的更新与 Leader 端有时间错配。倘若此时副本 B 所在的 Broker 宕机，当它重启回来后，副本 B 会执行日志截断操作，将 LEO 值调整为之前的高水位值，也就是 1。这就是说，位移值为 1 的那条消息被副本 B 从磁盘中删除，此时副本 B 的底层磁盘文件中只保存有 1 条消息，即位移值为 0 的那条消息。
+
+当执行完截断操作后，副本 B 开始从 A 拉取消息，执行正常的消息同步。如果就在这个节骨眼上，副本 A 所在的 Broker 宕机了，那么 Kafka 就别无选择，只能让副本 B 成为新的 Leader，此时，当 A 回来后，需要执行相同的日志截断操作，即将高水位调整为与 B 相同的值，也就是 1。这样操作之后，位移值为 1 的那条消息就从这两个副本中被永远地抹掉了。这就是这张图要展示的数据丢失场景。
+
+严格来说，*这个场景发生的前提是 Broker 端参数 `min.insync.replicas` 设置为 1*。此时一旦消息被写入到 Leader 副本的磁盘，就会被认为是“已提交状态”，但现有的时间错配问题导致 Follower 端的高水位更新是有滞后的。如果在这个短暂的滞后时间窗口内，接连发生 Broker 宕机，那么这类数据的丢失就是不可避免的。
+
+看下如何利用 Leader Epoch 机制来规避这种数据丢失。
+
+<img src="images/1043.png" style="zoom:33%;" />
+
+场景和之前大致是类似的，只不过引用 Leader Epoch 机制后，Follower 副本 B 重启回来后，需要向 A 发送一个特殊的请求去获取 Leader 的 LEO 值。在这个例子中，该值为 2。当获知到 Leader LEO=2 后，B 发现该 LEO 值不比它自己的 LEO 值小，而且缓存中也没有保存任何起始位移值 > 2 的 Epoch 条目，因此 B 无需执行任何日志截断操作。这是对高水位机制的一个明显改进，即副本是否执行日志截断不再依赖于高水位进行判断。
+
+现在，副本 A 宕机了，B 成为 Leader。同样地，当 A 重启回来后，执行与 B 相同的逻辑判断，发现也不用执行日志截断，至此位移值为 1 的那条消息在两个副本中均得到保留。后面当生产者程序向 B 写入新消息时，副本 B 所在的 Broker 缓存中，会生成新的 Leader Epoch 条目：[Epoch=1, Offset=2]。之后，副本 B 会使用这个条目帮助判断后续是否执行日志截断操作。这样，通过 Leader Epoch 机制，Kafka 完美地规避了这种数据丢失场景。
+
+## 28 | 主题管理知多少?
+
+### 主题日常管理
+
+#### 创建与查看
+
+如何使用命令创建 Kafka 主题。Kafka 提供了自带的 kafka-topics 脚本，用于帮助用户创建主题。
+
+```bash
+bin/kafka-topics.sh --bootstrap-server broker_host:port --create --topic my_topic_name  --partitions 1 --replication-factor 1
+```
+
+create 表明我们要创建主题，而 partitions 和 replication factor 分别设置了主题的分区数以及每个分区下的副本数。如果你之前使用过这个命令，你可能会感到奇怪：难道不是指定 `--zookeeper` 参数吗？为什么现在变成 `--bootstrap-server` 了呢？我来给出答案：从 Kafka **2.2 版本**开始，社区推荐用 `--bootstrap-server` 参数替换 `--zookeeper` 参数，并且显式地将后者标记为“已过期”，因此，如果你已经在使用 2.2 版本了，那么创建主题请指定 `--bootstrap-server` 参数。
+
+社区推荐使用 --bootstrap-server 而非 --zookeeper 的原因主要有两个。
+
+1. 使用 `--zookeeper` 会绕过 Kafka 的安全体系。这就是说，即使你为 Kafka 集群设置了安全认证，限制了主题的创建，如果你使用 --zookeeper 的命令，依然能成功创建任意主题，不受认证体系的约束。这显然是 Kafka 集群的运维人员不希望看到的。
+2. 使用 `--bootstrap-server` 与集群进行交互，越来越成为使用 Kafka 的标准姿势。换句话说，以后会有越来越少的命令和 API 需要与 ZooKeeper 进行连接。这样，我们只需要一套连接信息，就能与 Kafka 进行全方位的交互，不用像以前一样，必须同时维护 ZooKeeper 和 Broker 的连接信息。
+
+创建好主题之后，Kafka 允许我们使用相同的脚本查询主题。你可以使用下面的命令，查询所有主题的列表。
+
+```bash
+bin/kafka-topics.sh --bootstrap-server broker_host:port --list
+```
+
+如果要查询单个主题的详细数据，你可以使用下面的命令。
+
+```bash
+bin/kafka-topics.sh --bootstrap-server broker_host:port --describe --topic <topic_name>
+```
+
+<!--如果 describe 命令不指定具体的主题名称，那么 Kafka 默认会返回所有“可见”主题的详细数据给你。这里的“可见”，是指发起这个命令的用户能够看到的 Kafka 主题-->
+
+#### 主题变更
+
+1. 修改主题分区
+
+  其实就是增加分区，目前 Kafka 不允许减少某个主题的分区数。你可以使用 kafka-topics 脚本，结合 --alter 参数来增加某个主题的分区数，命令如下：
+
+  ```bash
+  bin/kafka-topics.sh --bootstrap-server broker_host:port --alter --topic --partitions <新分区数>
+  ```
+
+  这里要注意的是，你指定的分区数一定要比原有分区数大，否则 Kafka 会抛出 `InvalidPartitionsException` 异常。
+
+2. 修改主题级别参数
+  在主题创建之后，我们可以使用 kafka-configs 脚本修改对应的参数。假设我们要设置主题级别参数 `max.message.bytes`，那么命令如下：
+  
+  ```bash
+  bin/kafka-configs.sh --zookeeper zookeeper_host:port --entity-type topics --entity-name --alter --add-config max.message.bytes=10485760
+  ```
+也许你会觉得奇怪，为什么这个脚本就要指定 --zookeeper，而不是 `--bootstrap-server` 呢？其实，这个脚本也能指定 `--bootstrap-server` 参数，只是它是用来设置动态参数的。在专栏后面，我会详细介绍什么是动态参数，以及动态参数都有哪些。现在，你只需要了解设置常规的主题级别参数，还是使用 `--zookeeper`。
+  
+3. 变更副本数
+
+  使用自带的 `kafka-reassign-partitions` 脚本，帮助我们增加主题的副本数。这里先留个悬念，稍后我会拿 Kafka 内部主题 `__consumer_offsets` 来演示如何增加主题副本数。
+
+4. 修改主题限速
+
+  这里主要是指设置 Leader 副本和 Follower 副本使用的带宽。有时候，我们想要让某个主题的副本在执行副本同步机制时，不要消耗过多的带宽。Kafka 提供了这样的功能。我来举个例子。假设我有个主题，名为 test，我想让该主题各个分区的 Leader 副本和 Follower 副本在处理副本同步时，不得占用超过 100MBps 的带宽。注意是大写 B，即每秒不超过 100MB。那么，我们应该怎么设置呢？
+
+  首先，必须先设置 Broker 端参数 `leader.replication.throttled.rate` 和 `follower.replication.throttled.rate`，命令如下：
+
+  ```bash
+  bin/kafka-configs.sh --zookeeper zookeeper_host:port --alter --add-config 'leader.replication.throttled.rate=104857600,follower.replication.throttled.rate=104857600' --entity-type brokers --entity-name 0
+  ```
+
+  这条命令结尾处的 `--entity-name` 就是 Broker ID。倘若该主题的副本分别在 0、1、2、3 多个 Broker 上，那么你还要依次为 Broker 1、2、3 执行这条命令。
+
+  设置好这个参数之后，我们还需要为该主题设置要限速的副本。在这个例子中，我们想要为所有副本都设置限速，因此统一使用通配符 * 来表示，命令如下：
+
+  ```bash
+  bin/kafka-configs.sh --zookeeper zookeeper_host:port --alter --add-config 'leader.replication.throttled.replicas=*,follower.replication.throttled.replicas=*' --entity-type topics --entity-name test
+  ```
+
+5. 主题分区迁移
+
+  同样是使用 `kafka-reassign-partitions` 脚本，对主题各个分区的副本进行“手术”般的调整，比如把某些分区批量迁移到其他 Broker 上。这种变更比较复杂，我会在专栏后面专门和你分享如何做主题的分区迁移。
+
+6. 删除主题
+  ```bash
+  bin/kafka-topics.sh --bootstrap-server broker_host:port --delete  --topic <topic_name>
+  ```
+
+  删除主题的命令并不复杂，关键是删除操作是异步的，执行完这条命令不代表主题立即就被删除了。它仅仅是被标记成“已删除”状态而已。Kafka 会在后台默默地开启主题删除操作。因此，通常情况下，你都需要耐心地等待一段时间。
+
+### 特殊主题的管理与运维
+
+Kafka 内部主题 `__consumer_offsets` 和 `__transaction_state`。前者你可能已经很熟悉了，后者是 Kafka 支持事务新引入的。如果在你的生产环境中，你看到很多带有 `__consumer_offsets` 和 `__transaction_state` 前缀的子目录，不用惊慌，这是正常的。这两个内部主题默认都有 50 个分区，因此，分区子目录会非常得多。
+
+这里有个比较隐晦的问题，那就是 `__consumer_offsets` 的副本数问题。
+
+在 Kafka 0.11 之前，当 Kafka 自动创建该主题时，它会综合考虑当前运行的 Broker 台数和 Broker 端参数 `offsets.topic.replication.factor` 值，然后取两者的较小值作为该主题的副本数，但这就违背了用户设置 `offsets.topic.replication.factor` 的初衷。这正是很多用户感到困扰的地方：我的集群中有 100 台 Broker，`offsets.topic.replication.factor` 也设成了 3，为什么我的 `__consumer_offsets` 主题只有 1 个副本？其实，这就是因为这个主题是在只有一台 Broker 启动时被创建的。
+
+在 **0.11 版本**之后，社区修正了这个问题。也就是说，0.11 之后，Kafka 会严格遵守 `offsets.topic.replication.factor` 值。如果当前运行的 Broker 数量小于 `offsets.topic.replication.factor` 值，Kafka 会创建主题失败，并显式抛出异常。
+
+
+
+例：如果该主题的副本值已经是 1 了，我们能否把它增加到 3 呢？
+
+第 1 步是创建一个 json 文件，显式提供 50 个分区对应的副本数。注意，replicas 中的 3 台 Broker 排列顺序不同，目的是将 Leader 副本均匀地分散在 Broker 上。该文件具体格式如下：
+
+```json
+{"version":1, "partitions":[
+ {"topic":"__consumer_offsets","partition":0,"replicas":[0,1,2]}, 
+  {"topic":"__consumer_offsets","partition":1,"replicas":[0,2,1]},
+  {"topic":"__consumer_offsets","partition":2,"replicas":[1,0,2]},
+  {"topic":"__consumer_offsets","partition":3,"replicas":[1,2,0]},
+  ...
+  {"topic":"__consumer_offsets","partition":49,"replicas":[0,1,2]}
+]}
+```
+
+第 2 步是执行 kafka-reassign-partitions 脚本，命令如下：
+
+```bash
+bin/kafka-reassign-partitions.sh --zookeeper zookeeper_host:port --reassignment-json-file reassign.json --execute
+```
+
+除了修改内部主题，我们可能还想查看这些内部主题的消息内容。特别是对于 __consumer_offsets 而言，由于它保存了消费者组的位移数据，有时候直接查看该主题消息是很方便的事情。
+
+```bash
+bin/kafka-console-consumer.sh --bootstrap-server kafka_host:port --topic __consumer_offsets --formatter "kafka.coordinator.group.GroupMetadataManager\$OffsetsMessageFormatter" --from-beginning
+```
+
+除了查看位移提交数据，我们还可以直接读取该主题消息，查看消费者组的状态信息。
+
+```bash
+bin/kafka-console-consumer.sh --bootstrap-server kafka_host:port --topic __consumer_offsets --formatter "kafka.coordinator.group.GroupMetadataManager\$GroupMetadataMessageFormatter" --from-beginning
+```
+
+对于内部主题 `__transaction_state` 而言，方法是相同的。你只需要指定 `kafka.coordinator.transaction.TransactionLog\$TransactionLogMessageFormatter` 即可。
+
+### 常见主题错误处理
+
+#### 主题删除失败
+
+造成主题删除失败的原因有很多，最常见的原因有两个：
+
+1. *副本所在的 Broker 宕机了*
+2. *待删除主题的部分分区依然在执行迁移过程*
+
+如果是因为前者，通常你重启对应的 Broker 之后，删除操作就能自动恢复；如果是因为后者，那就麻烦了，很可能两个操作会相互干扰。
+
+不管什么原因，一旦你碰到*主题无法删除的问题*，可以采用这样的方法：
+
+1. 手动删除 ZooKeeper 节点 /admin/delete_topics 下以待删除主题为名的 znode。
+2. 手动删除该主题在磁盘上的分区目录。
+3. 在 ZooKeeper 中执行 rmr /controller，触发 Controller 重选举，刷新 Controller 缓存。
+
+在执行最后一步时，你一定要谨慎，因为它可能造成大面积的分区 Leader 重选举。事实上，仅仅执行前两步也是可以的，只是 Controller 缓存中没有清空待删除主题罢了，也不影响使用。
+
+#### `__consumer_offsets` 占用太多的磁盘
+
+显式地用 jstack 命令查看一下 kafka-log-cleaner-thread 前缀的线程状态。通常情况下，这都是因为该线程挂掉了，无法及时清理此内部主题。倘若真是这个原因导致的，那我们就只能重启相应的 Broker 了。另外，请你注意保留出错日志，因为这通常都是 Bug 导致的，最好提交到社区看一下。
+
+## 29 | Kafka动态 `Broker` 配置
+
+### 什么是动态 Broker 参数配置？
+
+1.1.0 版本之前，如果要设置 Broker 端的任何参数，我们必须在 server.properties 文件中显式地增加一行对应的配置，之后启动 Broker 进程，令参数生效。当后面需要变更任何参数时，我们必须重启 Broker。
+
+1.1.0 版本中正式引入了**动态 Broker 参数（Dynamic Broker Configs）**。所谓动态，就是**指修改参数值后，无需重启 Broker 就能立即生效**，而**之前在 server.properties 中配置的参数则称为静态参数（Static Configs）**。
+
+当前最新的 2.3 版本中的 Broker 端参数有 200 多个，社区并没有将每个参数都升级成动态参数，它仅仅是把*一部分参数变成了可动态调整*。
+
+打开 1.1 版本之后（含 1.1）的 Kafka 官网，你会发现Broker Configs表中增加了 Dynamic Update Mode 列。该列有 3 类值，分别是 read-only、per-broker 和 cluster-wide。
+
+1. read-only。被标记为 read-only 的参数和原来的参数行为一样，只有重启 Broker，才能令修改生效。
+2. **per-broker**。被标记为 per-broker 的参数**属于动态参数，修改它之后，只会在对应的 Broker 上生效**。
+3. **cluster-wide**。被标记为 cluster-wide 的参数也**属于动态参数，修改它之后，会在整个集群范围内生效**，也就是说，对所有 Broker 都生效。你也可以为具体的 Broker 修改 cluster-wide 参数。
+
+举个例子说明一下 per-broker 和 cluster-wide 的区别。Broker 端参数 `listeners` 想必你应该不陌生吧。它是一个 per-broker 参数，这表示你只能为单个 Broker 动态调整 `listeners`，而不能直接调整一批 Broker 的 `listeners`。`log.retention.ms` 参数是 cluster-wide 级别的，Kafka 允许为集群内所有 Broker 统一设置一个日志留存时间值。当然了，你也可以为单个 Broker 修改此值。
+
+<!--原理：kafka 将动态参数配置保存在ZooKeeper中，然后动态监听这个变更，一旦监听到立即处理-->
+
+### 使用场景
+
+1. 动态调整 Broker 端各种线程池大小，实时应对突发流量。
+2. 动态调整 Broker 端连接信息或安全配置信息。
+3. 动态更新 SSL Keystore 有效期。
+4. 动态调整 Broker 端 Compact 操作性能。
+5. 实时变更 JMX 指标收集器 (JMX Metrics Reporter)。
+
+在这些使用场景中，**动态调整线程池大小**应该算是最实用的功能了。很多时候，当 Kafka Broker 入站流量（inbound data）激增时，会造成 Broker 端请求积压（Backlog）。有了动态参数，我们就能够动态增加网络线程数和 I/O 线程数，快速消耗一些积压。当突发流量过去后，我们也能将线程数调整回来，减少对资源的浪费。整个过程都不需要重启 Broker。你甚至可以将这套调整线程数的动作，封装进定时任务中，以实现自动扩缩容。
+
+### 如何保存
+
+由于动态配置的特殊性，它必然有和普通只读参数不同的保存机制。
+
+首先，Kafka 将动态 Broker 参数保存在 ZooKeeper 中，具体的 znode 路径如下图所示。
+
+![](images/1044.png)
+
+changes 是用来实时监测动态参数变更的，不会保存参数值；topics 是用来保存 Kafka 主题级别参数的。虽然它们不属于动态 Broker 端参数，但其实它们也是能够动态变更的。
+
+users 和 clients 则是用于动态调整客户端配额（Quota）的 znode 节点。所谓配额，是指 Kafka 运维人员限制连入集群的客户端的吞吐量或者是限定它们使用的 CPU 资源。
+
+/config/brokers znode 才是真正保存动态 Broker 参数的地方。该 znode 下有两大类子节点。第一类子节点就只有一个，它有个固定的名字叫 < default >，保存的是前面说过的 cluster-wide 范围的动态参数；另一类则以 broker.id 为名，保存的是特定 Broker 的 per-broker 范围参数。由于是 per-broker 范围，因此这类子节点可能存在多个。
+
+下面这张图片，它展示的是我的一个 Kafka 集群环境上的动态 Broker 端参数。
+
+![](images/1045.png)
+
+在这张图中，我首先查看了 /config/brokers 下的子节点，我们可以看到，这里面有 < default > 节点和名为 0、1 的子节点。< default > 节点中保存了我设置的 cluster-wide 范围参数；0 和 1 节点中分别保存了我为 Broker 0 和 Broker 1 设置的 per-broker 参数。
+
+接下来，我分别展示了 cluster-wide 范围和 per-broker 范围的参数设置。拿 num.io.threads 参数为例，其 cluster-wide 值被动态调整为 12，而在 Broker 0 上被设置成 16，在 Broker 1 上被设置成 8。我为 Broker 0 和 Broker 1 单独设置的值，会覆盖掉 cluster-wide 值，但在其他 Broker 上，该参数默认值还是按 12 计算。
+
+如果我们再把静态参数加进来一起讨论的话，cluster-wide、per-broker 和 static 参数的优先级是这样的：**per-broker 参数 > cluster-wide 参数 > static 参数 > Kafka 默认值**。
+
+另外，如果你仔细查看上图中的 `ephemeralOwner` 字段，你会发现它们的值都是 `0x0`。这表示**这些 znode 都是持久化节点**，它们将一直存在。即使 ZooKeeper 集群重启，这些数据也不会丢失，这样就能保证这些动态参数的值会一直生效。
+
+### 如何配置
+
+目前，设置动态参数的工具行命令只有一个，那就是 Kafka 自带的 kafka-configs 脚本。
+
+以 unclean.leader.election.enable 参数为例，演示一下如何动态调整。
+
+#### 设置 cluster-wide 范围值
+
+下面这条命令展示了如何在集群层面设置全局值，即设置 cluster-wide 范围值。
+
+```bash
+$ bin/kafka-configs.sh --bootstrap-server kafka-host:port --entity-type brokers --entity-default --alter --add-config unclean.leader.election.enable=true
+Completed updating default config for brokers in the cluster,
+```
+
+**如果要设置 cluster-wide 范围的动态参数，需要显式指定 entity-default**。
+
+```bash
+$ bin/kafka-configs.sh --bootstrap-server kafka-host:port --entity-type brokers --entity-default --describe
+Default config for brokers in the cluster are:
+  unclean.leader.election.enable=true sensitive=false synonyms={DYNAMIC_DEFAULT_BROKER_CONFIG:unclean.leader.election.enable=true}
+```
+
+从输出来看，我们成功地在全局层面上设置该参数值为 true。注意 sensitive=false 的字眼，它表明我们要调整的参数不是敏感数据。如果我们调整的是类似于密码这样的参数时，该字段就会为 true，表示这属于敏感数据。
+
+#### 设置 per-broker 范围参数
+
+现在为 ID 为 1 的 Broker 设置一个不同的值。命令如下：
+
+```bash
+$ bin/kafka-configs.sh --bootstrap-server kafka-host:port --entity-type brokers --entity-name 1 --alter --add-config unclean.leader.election.enable=false
+Completed updating config for broker: 1.
+```
+
+查看一下刚刚的设置是否生效了。
+
+```bash
+$ bin/kafka-configs.sh --bootstrap-server kafka-host:port --entity-type brokers --entity-name 1 --describe
+Configs for broker 1 are:
+  unclean.leader.election.enable=false sensitive=false synonyms={DYNAMIC_BROKER_CONFIG:unclean.leader.election.enable=false, DYNAMIC_DEFAULT_BROKER_CONFIG:unclean.leader.election.enable=true, DEFAULT_CONFIG:unclean.leader.election.enable=false}
+```
+
+这条命令的输出信息很多。我们关注两点即可。
+
+1. 在 Broker 1 层面上，该参数被设置成了 false，这表明命令运行成功了。
+2. 从倒数第二行可以看出，在全局层面上，该参数值依然是 true。这表明，我们之前设置的 cluster-wide 范围参数值依然有效。
+
+如果我们要删除 cluster-wide 范围参数或 per-broker 范围参数，也非常简单，分别执行下面的命令就可以了。
+```bash
+# 删除cluster-wide范围参数
+$ bin/kafka-configs.sh --bootstrap-server kafka-host:port --entity-type brokers --entity-default --alter --delete-config unclean.leader.election.enable
+Completed updating default config for brokers in the cluster,
+```
+```bash
+# 删除per-broker范围参数
+$ bin/kafka-configs.sh --bootstrap-server kafka-host:port --entity-type brokers --entity-name 1 --alter --delete-config unclean.leader.election.enable
+Completed updating config for broker: 1.
+```
+
+*删除动态参数要指定 delete-config*。当我们删除完动态参数配置后，再次运行查看命令，结果如下：
+
+```bash
+# 查看cluster-wide范围参数
+$ bin/kafka-configs.sh --bootstrap-server kafka-host:port  --entity-type brokers --entity-default --describe
+Default config for brokers in the cluster are:
+```
+
+```bash
+# 查看Broker 1上的动态参数配置
+$ bin/kafka-configs.sh --bootstrap-server kafka-host:port  --entity-type brokers --entity-name 1 --describe
+Configs for broker 1 are:
+```
+
+此时，刚才配置的所有动态参数都已经被成功移除了。
+
+如果你想要知道动态 Broker 参数都有哪些，一种方式是在 Kafka 官网中查看 Broker 端参数列表，另一种方式是直接运行无参数的 kafka-configs 脚本，该脚本的说明文档会告诉你当前动态 Broker 参数都有哪些。我们可以先来看看下面这两张图。
+
+<img src="images/1046.png" style="zoom:33%;" />
+
+<img src="images/1047.png" style="zoom:33%;" />
+
+有较大几率被动态调整值的参数
+
+1. `log.retention.ms`。修改日志留存时间
+2. `num.io.threads` 和 `num.network.threads`。broker处理磁盘IO的线程数 和 处理消息的最大线程数
+3. 与 SSL 相关的参数（`ssl.keystore.type`、`ssl.keystore.location`、`ssl.keystore.password` 和 `ssl.key.password`）。允许动态实时调整它们之后，我们就能创建那些过期时间很短的 SSL 证书。每当我们调整时，Kafka 底层会重新配置 Socket 连接通道并更新 Keystore。新的连接会使用新的 Keystore，阶段性地调整这组参数，有利于增加安全性。
+4. `num.replica.fetchers`。配置多可以提高 follower 的I/O并发度，单位时间内leader持有跟多请求，相应负载会增大，需要根据机器硬件资源做权衡
+
+## 30 | 怎么重设消费者组位移？
+
+### 为什么要重设消费者组位移
+
+Kafka 和传统的消息引擎在设计上是有很大区别的，其中一个比较显著的区别就是，Kafka 的消费者读取消息是可以重演的（replayable）。
+
+像 RabbitMQ 或 ActiveMQ 这样的传统消息中间件，它们处理和响应消息的方式是破坏性的（destructive），即一旦消息被成功处理，就会被从 Broker 上删除。
+
+反观 Kafka，由于它是基于日志结构（log-based）的消息引擎，消费者在消费消息时，仅仅是从磁盘文件上读取数据而已，是只读的操作，因此消费者不会删除消息数据。同时，由于位移数据是由消费者控制的，因此它能够很容易地修改位移的值，实现重复消费历史数据的功能。
+
+在实际使用场景中，我该如何确定是使用传统的消息中间件，还是使用 Kafka 呢？*如果在你的场景中，消息处理逻辑非常复杂，处理代价很高，同时你又不关心消息之间的顺序，那么传统的消息中间件是比较合适的；反之，如果你的场景需要较高的吞吐量，但每条消息的处理时间很短，同时你又很在意消息的顺序，此时，Kafka 就是你的首选*。
+
+### 重设位移策略
+
+1. 位移维度。这是指根据位移值来重设。也就是说，直接把消费者的位移值重设成我们给定的位移值。
+2. 时间维度。我们可以给定一个时间，让消费者把位移调整成大于该时间的最小位移；也可以给出一段时间间隔，比如 30 分钟前，然后让消费者直接将位移调回 30 分钟之前的位移值。
+
+下面的这张表格罗列了 7 种重设策略。
+
+![](images/1048.png)
+
+- Earliest 策略表示将位移调整到主题当前最早位移处。这个最早位移不一定就是 0，因为在生产环境中，很久远的消息会被 Kafka 自动删除，所以当前最早位移很可能是一个大于 0 的值。**如果你想要重新消费主题的所有消息，那么可以使用 Earliest 策略**。
+- Latest 策略表示把位移重设成最新末端位移。如果你总共向某个主题发送了 15 条消息，那么最新末端位移就是 15。如果你想跳过所有历史消息，**打算从最新的消息处开始消费的话，可以使用 Latest 策略**。
+- Current 策略表示将位移调整成消费者当前提交的最新位移。有时候你可能会碰到这样的场景：你修改了消费者程序代码，并重启了消费者，结果发现代码有问题，你需要回滚之前的代码变更，同时也要把位移重设到消费者重启时的位置，那么，Current 策略就可以帮你实现这个功能。
+- Specified-Offset 策略则是比较通用的策略，表示消费者把位移值调整到你指定的位移处（绝对数值）。这个策略的典型使用场景是，**消费者程序在处理某条错误消息时，你可以手动地“跳过”此消息的处理**。在实际使用过程中，可能会出现 corrupted 消息无法被消费的情形，此时消费者程序会抛出异常，无法继续工作。一旦碰到这个问题，你就可以尝试使用 Specified-Offset 策略来规避。
+- Shift-By-N 策略指定的就是位移的相对数值，即你给出要跳过的一段消息的距离即可。这里的“跳”是双向的，你既可以向前“跳”，也可以向后“跳”。比如，你想把位移重设成当前位移的前 100 条位移处，此时你需要指定 N 为 -100。
+- DateTime 允许你指定一个时间，然后将位移重置到该时间之后的最早位移处。常见的使用场景是，你想重新消费昨天的数据，那么你可以使用该策略重设位移到昨天 0 点。
+- Duration 策略则是指给定相对的时间间隔，然后将位移调整到距离当前给定时间间隔的位移处，具体格式是 PnDTnHnMnS。如果你熟悉 Java 8 引入的 Duration 类的话，你应该不会对这个格式感到陌生。它就是一个符合 ISO-8601 规范的 Duration 格式，以字母 P 开头，后面由 4 部分组成，即 D、H、M 和 S，分别表示天、小时、分钟和秒。举个例子，如果你想将位移调回到 15 分钟前，那么你就可以指定 PT0H15M0S。
+
+### 重设消费者组位移的方式
+
+1. 通过消费者 API 来实现。
+2. 通过 kafka-consumer-groups 命令行脚本来实现。
+
+#### 消费者 API 方式设置
+
+通过 Java API 的方式来重设位移，你需要调用 KafkaConsumer 的 seek 方法，或者是它的变种方法 seekToBeginning 和 seekToEnd。我们来看下它们的方法签名。
+
+```java
+void seek(TopicPartition partition, long offset);
+void seek(TopicPartition partition, OffsetAndMetadata offsetAndMetadata);
+void seekToBeginning(Collection<TopicPartition> partitions);
+void seekToEnd(Collection<TopicPartition> partitions);
+```
+
+根据方法的定义，我们可以知道，每次调用 seek 方法只能重设一个分区的位移。OffsetAndMetadata 类是一个封装了 Long 型的位移和自定义元数据的复合类，只是一般情况下，自定义元数据为空，因此你基本上可以认为这个类表征的主要是消息的位移值。seek 的变种方法 seekToBeginning 和 seekToEnd 则拥有一次重设多个分区的能力。我们在调用它们时，可以一次性传入多个主题分区。
+
+1. Earliest 策略
+  代码如下：
+  ```java
+  Properties consumerProperties = new Properties();
+  consumerProperties.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
+  consumerProperties.put(ConsumerConfig.GROUP_ID_CONFIG, groupID);
+  consumerProperties.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+  consumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+  consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+  consumerProperties.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, brokerList);
+
+  String topic = "test";  // 要重设位移的Kafka主题 
+  try (final KafkaConsumer<String, String> consumer = new KafkaConsumer<>(consumerProperties)) {
+    consumer.subscribe(Collections.singleton(topic));
+    consumer.poll(0); // 获取元数据
+    consumer.seekToBeginning(
+      consumer.partitionsFor(topic)
+      .stream()
+      .map(partitionInfo -> new TopicPartition(topic, partitionInfo.partition()))
+      .collect(Collectors.toList()));
+  } 
+  ```
+
+  这段代码中有几个比较关键的部分，你需要注意一下。
+
+  1. 你要创建的消费者程序，要禁止自动提交位移。
+  2. 组 ID 要设置成你要重设的消费者组的组 ID。
+  3. 调用 seekToBeginning 方法时，需要一次性构造主题的所有分区对象。
+  4. 最重要的是，一定要调用带长整型的 poll 方法，而不要调用 consumer.poll(Duration.ofSecond(0))。
+
+  虽然社区已经不推荐使用 poll(long) 了，但短期内应该不会移除它，所以你可以放心使用。另外，为了避免重复，在后面的实例中，我只给出最关键的代码。
+
+2. Latest 策略
+  Latest 策略和 Earliest 是类似的，我们只需要使用 seekToEnd 方法即可，如下面的代码所示：
+  ```java
+  consumer.partitionsFor(topic)
+    .stream()
+    .map(info -> new TopicPartition(topic, info.partition()))
+    .forEach(tp -> {
+      long committedOffset = consumer.committed(tp).offset();
+      consumer.seek(tp, committedOffset);
+    });
+  ```
+
+3. Current 策略
+  实现 Current 策略的方法很简单，我们需要借助 KafkaConsumer 的 committed 方法来获取当前提交的最新位移，代码如下：
+  ```java
+  consumer.partitionsFor(topic)
+    .stream()
+    .map(info -> new TopicPartition(topic, info.partition()))
+    .forEach(tp -> {
+      long committedOffset = consumer.committed(tp).offset();
+      consumer.seek(tp, committedOffset);
+  });
+  ```
+  这段代码首先调用 partitionsFor 方法获取给定主题的所有分区，然后依次获取对应分区上的已提交位移，最后通过 seek 方法重设位移到已提交位移处。
+
+4. Specified-Offset 策略
+  如果要实现 Specified-Offset 策略，直接调用 seek 方法即可，如下所示：
+  ```java
+  long targetOffset = 1234L;
+  for (PartitionInfo info : consumer.partitionsFor(topic)) {
+    TopicPartition tp = new TopicPartition(topic, info.partition());
+    consumer.seek(tp, targetOffset);
+  }
+  ```
+  这次我没有使用 Java 8 Streams 的写法，如果你不熟悉 Lambda 表达式以及 Java 8 的 Streams，这种写法可能更加符合你的习惯。
+
+5. Shift-By-N 策略
+  主体代码逻辑如下：
+  ```java
+  for (PartitionInfo info : consumer.partitionsFor(topic)) {
+    TopicPartition tp = new TopicPartition(topic, info.partition());
+    // 假设向前跳123条消息
+    long targetOffset = consumer.committed(tp).offset() + 123L; 
+    consumer.seek(tp, targetOffset);
+  }
+  ```
+
+6. DateTime 策略
+  如果要实现 DateTime 策略，我们需要借助另一个方法：*KafkaConsumer. offsetsForTimes* 方法。假设我们要重设位移到 2019 年 6 月 20 日晚上 8 点，那么具体代码如下：
+  ```java
+
+  long ts = LocalDateTime.of(2019, 6, 20, 20, 0).toInstant(ZoneOffset.ofHours(8)).toEpochMilli();
+  Map<TopicPartition, Long> timeToSearch = consumer.partitionsFor(topic)
+    .stream().map(info -> new TopicPartition(topic, info.partition()))
+    .collect(Collectors.toMap(Function.identity(), tp -> ts));
+
+  for (Map.Entry<TopicPartition, OffsetAndTimestamp> entry : 
+       consumer.offsetsForTimes(timeToSearch).entrySet()) {
+    consumer.seek(entry.getKey(), entry.getValue().offset());
+  }
+  ```
+  这段代码构造了 LocalDateTime 实例，然后利用它去查找对应的位移值，最后调用 seek，实现了重设位移。
+
+7. Duration 策略
+  ```java
+  Map<TopicPartition, Long> timeToSearch = consumer.partitionsFor(topic).stream()
+    .map(info -> new TopicPartition(topic, info.partition()))
+    .collect(Collectors.toMap(Function.identity(), tp -> System.currentTimeMillis() - 30 * 1000  * 60));
+
+  for (Map.Entry<TopicPartition, OffsetAndTimestamp> entry : 
+       consumer.offsetsForTimes(timeToSearch).entrySet()) {
+    consumer.seek(entry.getKey(), entry.getValue().offset());
+  }
+  ```
+
+*总之，使用 Java API 的方式来实现重设策略的主要入口方法，就是 seek 方法*。
+
+#### 命令行方式设置
+
+位移重设还有另一个重要的途径：**通过 kafka-consumer-groups 脚本**。需要注意的是，这个功能是在 **Kafka 0.11 版本**中新引入的。这就是说，如果你使用的 Kafka 是 0.11 版本之前的，那么你只能使用 API 的方式来重设位移。
+
+比起 API 的方式，用命令行重设位移要简单得多。针对我们刚刚讲过的 7 种策略，有 7 个对应的参数。
+
+1. Earliest 策略
+
+    直接指定 –to-earliest
+
+    ```bash
+    bin/kafka-consumer-groups.sh --bootstrap-server kafka-host:port --group test-group --reset-offsets --all-topics --to-earliest –execute
+    ```
+
+2. Latest 策略
+  直接指定 –to-latest
+  ```bash
+  bin/kafka-consumer-groups.sh --bootstrap-server kafka-host:port --group test-group --reset-offsets --all-topics --to-latest –execute
+  ```
+
+3. Current 策略
+  直接指定 –to-current
+  ```bash
+  bin/kafka-consumer-groups.sh --bootstrap-server kafka-host:port --group test-group --reset-offsets --all-topics --to-current –execute
+  ```
+
+4. Specified-Offset 策略
+  直接指定 –to-offset
+  ```bash
+  bin/kafka-consumer-groups.sh --bootstrap-server kafka-host:port --group test-group --reset-offsets --all-topics --to-offset <offset> --execute
+  ```
+
+5. Shift-By-N 策略
+  直接指定 –shift-by N
+  ```bash
+  bin/kafka-consumer-groups.sh --bootstrap-server kafka-host:port --group test-group --reset-offsets --shift-by <offset_N> --execute
+  ```
+
+6. DateTime 策略
+  直接指定 –to-datetime
+  ```bash
+  bin/kafka-consumer-groups.sh --bootstrap-server kafka-host:port --group test-group --reset-offsets --to-datetime 2019-06-20T20:00:00.000 --execute
+  ```
+
+7. Duration 策略
+  直接指定 -by-duration
+  ```bash
+  bin/kafka-consumer-groups.sh --bootstrap-server kafka-host:port --group test-group --reset-offsets --by-duration PT0H30M0S --execute
+  ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
