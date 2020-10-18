@@ -2562,16 +2562,791 @@ void seekToEnd(Collection<TopicPartition> partitions);
   bin/kafka-consumer-groups.sh --bootstrap-server kafka-host:port --group test-group --reset-offsets --by-duration PT0H30M0S --execute
   ```
 
+## 31 | 常见工具脚本大汇总
+
+### 命令行脚本概览
+
+Kafka 默认提供了很多个命令行脚本，用于实现各种各样的功能和运维管理。以 2.2 版本为例，详细地盘点下这些命令行工具。下图展示了 **2.2 版本提供的所有命令行脚本**。
+
+<img src="images/1049.png" style="zoom:33%;" />
+
+从图中我们可以知道，2.2 版本总共提供了 30 个 SHELL 脚本。图中的 windows 实际上是个子目录，里面保存了 Windows 平台下的 BAT 批处理文件。其他的.sh 文件则是 Linux 平台下的标准 SHELL 脚本。
+
+默认情况下，不加任何参数或携带 --help 运行 SHELL 文件，会得到该脚本的使用方法说明。下面这张图片展示了 kafka-log-dirs 脚本的调用方法。
+
+<img src="images/1050.png" style="zoom:33%;" />
+
+- connect-standalone 和 connect-distributed 两个脚本。这两个脚本是 Kafka Connect 组件（用于实现 Kafka 与外部世界系统之间的数据传输）的启动脚本。Kafka Connect 支持单节点的 Standalone 模式，也支持多节点的 Distributed 模式。这两个脚本分别是这两种模式下的启动脚本。
+
+- kafka-acls 脚本。它是用于设置 Kafka 权限。
+
+- kafka-broker-api-versions 脚本，主要目的是验证不同 Kafka 版本之间服务器和客户端的适配性。
+  <!--在 0.10.2.0 之前，Kafka 是单向兼容的，即高版本的 Broker 能够处理低版本 Client 发送的请求，反过来则不行。自 0.10.2.0 版本开始，Kafka 正式支持双向兼容，也就是说，低版本的 Broker 也能处理高版本 Client 的请求了。-->
+
+- kafka-configs 脚本。用于配置 kafka。
+- **`kafka-console-consumer`** 和 **`kafka-console-producer`** ，消费消息和生产消息
+- **`kafka-producer-perf-test`** 和 **`kafka-consumer-perf-test`**，它们分别是生产者和消费者的性能测试工具。
+- **`kafka-consumer-groups`**，查看消费者组位移
+- kafka-delegation-tokens，它是管理 Delegation Token 的。基于 Delegation Token 的认证是一种轻量级的认证机制，补充了现有的 SASL 认证机制。
+- kafka-delete-records，用于删除 Kafka 的分区消息。鉴于 Kafka 本身有自己的自动消息删除策略，这个脚本的实际出场率并不高。
+- **`kafka-dump-log`** ，它能查看 Kafka 消息文件的内容，包括消息的各种元数据信息，甚至是消息体本身。
+- kafka-log-dirs，可以帮助查询各个 Broker 上的各个日志路径的磁盘占用情况。
+- kafka-mirror-maker ，实现 Kafka 集群间的消息同步的。
+- kafka-preferred-replica-election 脚本是执行 Preferred Leader 选举的。它可以为指定的主题执行“换 Leader”的操作。
+- kafka-reassign-partitions ，用于执行分区副本迁移以及副本文件路径迁移。
+- kafka-topics ，所有的主题管理操作，都是由该脚本来实现的。
+- kafka-run-class ，你可以用这个脚本执行任何带 main 方法的 Kafka 类。在 Kafka 早期的发展阶段，很多工具类都没有自己专属的 SHELL 脚本，比如刚才提到的 kafka-dump-log，你只能通过运行 kafka-run-class kafka.tools.DumpLogSegments 的方式来间接实现。如果你用文本编辑器打开 kafka-dump-log.sh，你会发现它实际上调用的就是这条命令。后来社区逐渐为这些重要的工具类都添加了专属的命令行脚本，现在 kafka-run-class 脚本的出场率大大降低了。在实际工作中，你几乎遇不上要直接使用这个脚本的场景了。
+- kafka-server-start 和 kafka-server-stop，用于启动和停止 Kafka Broker 进程。
+- kafka-streams-application-reset 脚本用来给 Kafka Streams 应用程序重设位移，以便重新消费数据。如果你没有用到 Kafka Streams 组件，这个脚本对你来说是没有用的。
+- kafka-verifiable-producer 和 kafka-verifiable-consumer 脚本是用来测试生产者和消费者功能的。它们是很“古老”的脚本了，你几乎用不到它们。另外，前面提到的 Console Producer 和 Console Consumer 完全可以替代它们。
+- zookeeper 开头的脚本是用来管理和运维 ZooKeeper 的
+- trogdor，它是 Kafka 的测试框架，用于执行各种基准测试和负载测试。一般的 Kafka 用户应该用不到这个脚本。
+
+### 重点脚本操作
+
+#### 生产消息
+
+生产消息使用 **`kafka-console-producer`** 脚本即可，一个典型的命令如下所示：
+
+```bash
+$ bin/kafka-console-producer.sh --broker-list kafka-host:port --topic test-topic --request-required-acks -1 --producer-property compression.type=lz4
+```
+
+在这段命令中，我们指定生产者参数 acks 为 -1，同时启用了 LZ4 的压缩算法。这个脚本可以很方便地让我们使用控制台来向 Kafka 的指定主题发送消息。
+
+#### 消费消息
+
+下面再来说说数据消费。如果要快速地消费主题中的数据来验证消息是否存在，运行 **`kafka-console-consumer`** 脚本应该算是最便捷的方法了。常用的命令用法如下：
+
+```bash
+$ bin/kafka-console-consumer.sh --bootstrap-server kafka-host:port --topic test-topic --group test-group --from-beginning --consumer-property enable.auto.commit=false 
+```
+
+注意，在这段命令中，我们指定了 group 信息。如果没有指定的话，每次运行 Console Consumer，它都会自动生成一个新的消费者组来消费。久而久之，你会发现你的集群中有大量的以 console-consumer 开头的消费者组。通常情况下，你最好还是加上 group。
+
+另外，from-beginning 等同于将 Consumer 端参数 `auto.offset.reset` 设置成 earliest，表明我想从头开始消费主题。如果不指定的话，它会默认从最新位移读取消息。如果此时没有任何新消息，那么该命令的输出为空，你什么都看不到。
+
+最后，我在命令中禁掉了自动提交位移。通常情况下，让 Console Consumer 提交位移是没有意义的，毕竟我们只是用它做一些简单的测试。
+
+#### 测试生产者性能
+
+如果你想要对 Kafka 做一些简单的性能测试。那么不妨试试下面这一组工具。它们分别用于测试生产者和消费者的性能。
+
+我们先说测试生产者的脚本：**`kafka-producer-perf-test`**。它的参数有不少，但典型的命令调用方式是这样的。
+
+```bash
+$ bin/kafka-producer-perf-test.sh --topic test-topic --num-records 10000000 --throughput -1 --record-size 1024 --producer-props bootstrap.servers=kafka-host:port acks=-1 linger.ms=2000 compression.type=lz4
+
+2175479 records sent, 435095.8 records/sec (424.90 MB/sec), 131.1 ms avg latency, 681.0 ms max latency.
+4190124 records sent, 838024.8 records/sec (818.38 MB/sec), 4.4 ms avg latency, 73.0 ms max latency.
+10000000 records sent, 737463.126844 records/sec (720.18 MB/sec), 31.81 ms avg latency, 681.00 ms max latency, 4 ms 50th, 126 ms 95th, 604 ms 99th, 672 ms 99.9th.
+```
+
+上述命令向指定主题发送了 1 千万条消息，每条消息大小是 1KB。该命令允许你在 producer-props 后面指定要设置的生产者参数，比如本例中的压缩算法、延时时间等。
+
+该命令的输出值得好好说一下。它会打印出测试生产者的吞吐量 (MB/s)、消息发送延时以及各种分位数下的延时。一般情况下，消息延时不是一个简单的数字，而是一组分布。或者说，*我们应该关心延时的概率分布情况，仅仅知道一个平均值是没有意义的*。这就是这里计算分位数的原因。通常我们关注到 *99th 分位*就可以了。比如在上面的输出中，99th 值是 604ms，这表明测试生产者生产的消息中，有 99% 消息的延时都在 604ms 以内。你完全可以把这个数据当作这个生产者对外承诺的 SLA。
+
+#### 测试消费者性能
+
+测试消费者也是类似的原理，只不过我们使用的是 **`kafka-consumer-perf-test`** 脚本，命令如下：
+
+```bash
+$ bin/kafka-consumer-perf-test.sh --broker-list kafka-host:port --messages 10000000 --topic test-topic
+start.time, end.time, data.consumed.in.MB, MB.sec, data.consumed.in.nMsg, nMsg.sec, rebalance.time.ms, fetch.time.ms, fetch.MB.sec, fetch.nMsg.sec
+2019-06-26 15:24:18:138, 2019-06-26 15:24:23:805, 9765.6202, 1723.2434, 10000000, 1764602.0822, 16, 5651, 1728.1225, 1769598.3012
+```
+
+虽然输出格式有所差别，但该脚本也会打印出消费者的吞吐量数据。比如本例中的 1723MB/s。有点令人遗憾的是，它没有计算不同分位数下的分布情况。因此，在实际使用过程中，这个脚本的使用率要比生产者性能测试脚本的使用率低。
+
+#### 查看主题消息总数
+
+很多时候，我们都想查看某个主题当前的消息总数。令人惊讶的是，Kafka 自带的命令竟然没有提供这样的功能，我们只能“绕道”获取了。所谓的绕道，是指我们必须要调用一个未被记录在官网上的命令。命令如下：
+
+```bash
+$ bin/kafka-run-class.sh kafka.tools.GetOffsetShell --broker-list kafka-host:port --time -2 --topic test-topic
+
+test-topic:0:0
+test-topic:1:0
+
+$ bin/kafka-run-class.sh kafka.tools.GetOffsetShell --broker-list kafka-host:port --time -1 --topic test-topic
+
+test-topic:0:5500000
+test-topic:1:5500000
+```
+
+我们要使用 Kafka 提供的工具类 **GetOffsetShell** 来计算给定主题特定分区当前的最早位移和最新位移，将两者的差值累加起来，就能得到该主题当前总的消息数。对于本例来说，test-topic 总的消息数为 5500000 + 5500000，等于 1100 万条。
+
+#### 查看消息文件数据
+
+作为 Kafka 使用者，你是不是对 Kafka 底层文件里面保存的内容很感兴趣? 如果是的话，你可以使用 **`kafka-dump-log`** 脚本来查看具体的内容。
+
+```bash
+$ bin/kafka-dump-log.sh --files ../data_dir/kafka_1/test-topic-1/00000000000000000000.log 
+Dumping ../data_dir/kafka_1/test-topic-1/00000000000000000000.log
+Starting offset: 0
+baseOffset: 0 lastOffset: 14 count: 15 baseSequence: -1 lastSequence: -1 producerId: -1 producerEpoch: -1 partitionLeaderEpoch: 0 isTransactional: false isControl: false position: 0 CreateTime: 1561597044933 size: 1237 magic: 2 compresscodec: LZ4 crc: 646766737 isvalid: true
+baseOffset: 15 lastOffset: 29 count: 15 baseSequence: -1 lastSequence: -1 producerId: -1 producerEpoch: -1 partitionLeaderEpoch: 0 isTransactional: false isControl: false position: 1237 CreateTime: 1561597044934 size: 1237 magic: 2 compresscodec: LZ4 crc: 3751986433 isvalid: true
+......
+```
+
+如果只是指定 --files，那么该命令显示的是消息批次（RecordBatch）或消息集合（MessageSet）的元数据信息，比如创建时间、使用的压缩算法、CRC 校验值等。
+
+*如果我们想深入看一下每条具体的消息，那么就需要显式指定 --deep-iteration 参数*，如下所示：
+
+```bash
+$ bin/kafka-dump-log.sh --files ../data_dir/kafka_1/test-topic-1/00000000000000000000.log --deep-iteration
+Dumping ../data_dir/kafka_1/test-topic-1/00000000000000000000.log
+Starting offset: 0
+baseOffset: 0 lastOffset: 14 count: 15 baseSequence: -1 lastSequence: -1 producerId: -1 producerEpoch: -1 partitionLeaderEpoch: 0 isTransactional: false isControl: false position: 0 CreateTime: 1561597044933 size: 1237 magic: 2 compresscodec: LZ4 crc: 646766737 isvalid: true
+| offset: 0 CreateTime: 1561597044911 keysize: -1 valuesize: 1024 sequence: -1 headerKeys: []
+| offset: 1 CreateTime: 1561597044932 keysize: -1 valuesize: 1024 sequence: -1 headerKeys: []
+| offset: 2 CreateTime: 1561597044932 keysize: -1 valuesize: 1024 sequence: -1 headerKeys: []
+| offset: 3 CreateTime: 1561597044932 keysize: -1 valuesize: 1024 sequence: -1 headerKeys: []
+| offset: 4 CreateTime: 1561597044932 keysize: -1 valuesize: 1024 sequence: -1 headerKeys: []
+| offset: 5 CreateTime: 1561597044932 keysize: -1 valuesize: 1024 sequence: -1 headerKeys: []
+| offset: 6 CreateTime: 1561597044932 keysize: -1 valuesize: 1024 sequence: -1 headerKeys: []
+| offset: 7 CreateTime: 1561597044932 keysize: -1 valuesize: 1024 sequence: -1 headerKeys: []
+| offset: 8 CreateTime: 1561597044932 keysize: -1 valuesize: 1024 sequence: -1 headerKeys: []
+| offset: 9 CreateTime: 1561597044932 keysize: -1 valuesize: 1024 sequence: -1 headerKeys: []
+| offset: 10 CreateTime: 1561597044932 keysize: -1 valuesize: 1024 sequence: -1 headerKeys: []
+| offset: 11 CreateTime: 1561597044932 keysize: -1 valuesize: 1024 sequence: -1 headerKeys: []
+| offset: 12 CreateTime: 1561597044932 keysize: -1 valuesize: 1024 sequence: -1 headerKeys: []
+| offset: 13 CreateTime: 1561597044933 keysize: -1 valuesize: 1024 sequence: -1 headerKeys: []
+| offset: 14 CreateTime: 1561597044933 keysize: -1 valuesize: 1024 sequence: -1 headerKeys: []
+baseOffset: 15 lastOffset: 29 count: 15 baseSequence: -1 lastSequence: -1 producerId: -1 producerEpoch: -1 partitionLeaderEpoch: 0 isTransactional: false isControl: false position: 1237 CreateTime: 1561597044934 size: 1237 magic: 2 compresscodec: LZ4 crc: 3751986433 isvalid: true
+......
+```
+
+在上面的输出中，以竖线开头的就是消息批次下的消息信息。如果你还想看消息里面的实际数据，那么还需要指定 **`--print-data-log`** 参数，如下所示：
+
+```bash
+$ bin/kafka-dump-log.sh --files ../data_dir/kafka_1/test-topic-1/00000000000000000000.log --deep-iteration --print-data-log
+```
+
+#### 查询消费者组位移
+
+接下来，我们来看如何使用 **`kafka-consumer-groups`** 脚本查看消费者组位移。在上一讲讨论重设消费者组位移的时候，我们使用的也是这个命令。当时我们用的是 `--reset-offsets` 参数，今天我们使用的是 `--describe` 参数。假设我们要查询 Group ID 是 test-group 的消费者的位移，那么命令如图所示：
+
+![](images/1051.png)
+
+图中的 CURRENT-OFFSET 表示该消费者当前消费的最新位移，LOG-END-OFFSET 表示对应分区最新生产消息的位移，LAG 列是两者的差值。CONSUMER-ID 是 Kafka 消费者程序自动生成的一个 ID。截止到 2.2 版本，你都无法干预这个 ID 的生成过程。如果运行该命令时，这个消费者程序已经终止了，那么此列的值为空。
+
+## 32 | KafkaAdminClient：Kafka的运维利器
+
+### 引入原因
+
+在上一节中，介绍了 Kafka 自带的各种命令行脚本，这些脚本使用起来虽然方便，却有一些弊端。
+
+首先，不论是 Windows 平台，还是 Linux 平台，命令行的脚本都只能运行在控制台上。如果你想要在应用程序、运维框架或是监控平台中集成它们，会非常得困难。
+
+其次，这些命令行脚本很多都是通过连接 ZooKeeper 来提供服务的。目前，社区已经越来越不推荐任何工具直连 ZooKeeper 了，因为这会带来一些潜在的问题，比如这可能会绕过 Kafka 的安全设置。在专栏前面，我说过 `kafka-topics` 脚本连接 ZooKeeper 时，不会考虑 Kafka 设置的用户认证机制。也就是说，任何使用该脚本的用户，不论是否具有创建主题的权限，都能成功“跳过”权限检查，强行创建主题。这显然和 Kafka 运维人员配置权限的初衷背道而驰。
+
+最后，运行这些脚本需要使用 Kafka 内部的类实现，也就是 Kafka服务器端的代码。实际上，社区还是希望用户只使用 Kafka客户端代码，通过现有的请求机制来运维管理集群。这样的话，所有运维操作都能纳入到统一的处理机制下，方便后面的功能演进。
+
+基于这些原因，社区于 **0.11 版本正式推出了 Java 客户端版的 AdminClient**，并不断地在后续的版本中对它进行完善。我粗略地计算了一下，有关 AdminClient 的优化和更新的各种提案，社区中有十几个之多，而且贯穿各个大的版本，足见社区对 AdminClient 的重视。
+
+<!--值得注意的是，服务器端也有一个 AdminClient，包路径是 kafka.admin。这是之前的老运维工具类，提供的功能也比较有限，社区已经不再推荐使用它了。-->
+
+### 如何使用
+
+如果你使用的是 Maven，需要增加以下依赖项：
+
+```xml
+<dependency>
+    <groupId>org.apache.kafka</groupId>
+    <artifactId>kafka-clients</artifactId>
+    <version>2.3.0</version>
+</dependency>
+```
+
+如果你使用的是 Gradle，那么添加方法如下：
+
+```gas
+compile group: 'org.apache.kafka', name: 'kafka-clients', version: '2.3.0'
+```
+
+### 功能
+
+鉴于社区还在不断地完善 AdminClient 的功能，所以你需要时刻关注不同版本的发布说明（Release Notes），看看是否有新的运维操作被加入进来。在最新的 **2.3 版本**中，AdminClient 提供的功能有 9 大类。
+
+1. 主题管理：包括主题的创建、删除和查询。
+2. 权限管理：包括具体权限的配置与删除。
+3. 配置参数管理：包括 Kafka 各种资源的参数设置、详情查询。所谓的 Kafka 资源，主要有 Broker、主题、用户、Client-id 等。
+4. 副本日志管理：包括副本底层日志路径的变更和详情查询。
+5. 分区管理：即创建额外的主题分区。
+6. 消息删除：即删除指定位移之前的分区消息。
+7. Delegation Token 管理：包括 Delegation Token 的创建、更新、过期和详情查询。
+8. 消费者组管理：包括消费者组的查询、位移查询和删除。
+9. Preferred 领导者选举：推选指定主题分区的 Preferred Broker 为领导者。
+
+### 工作原理
+
+在详细介绍 AdminClient 的主要功能之前，我们先简单了解一下 AdminClient 的工作原理。*从设计上来看，AdminClient 是一个双线程的设计：前端主线程和后端 I/O 线程*。前端线程负责将用户要执行的操作转换成对应的请求，然后再将请求发送到后端 I/O 线程的队列中；而后端 I/O 线程从队列中读取相应的请求，然后发送到对应的 Broker 节点上，之后把执行结果保存起来，以便等待前端线程的获取。
+
+值得一提的是，AdminClient 在内部大量使用生产者 - 消费者模式将请求生成与处理解耦。我在下面这张图中大致描述了它的工作原理。
+
+![](images/1052.png)
+
+如图所示，前端主线程会创建名为 Call 的请求对象实例。该实例有两个主要的任务
+
+1. *构建对应的请求对象*。比如，如果要创建主题，那么就创建 CreateTopicsRequest；如果是查询消费者组位移，就创建 OffsetFetchRequest。
+2. *指定响应的回调逻辑*。比如从 Broker 端接收到 CreateTopicsResponse 之后要执行的动作。一旦创建好 Call 实例，前端主线程会将其放入到新请求队列（New Call Queue）中，此时，前端主线程的任务就算完成了。它只需要等待结果返回即可。
+
+剩下的所有事情就都是后端 I/O 线程的工作了。就像图中所展示的那样，该线程使用了 3 个队列来承载不同时期的请求对象，它们分别是新请求队列、待发送请求队列和处理中请求队列。为什么要使用 3 个呢？原因是目前新请求队列的线程安全是由 Java 的 monitor 锁来保证的。**为了确保前端主线程不会因为 monitor 锁被阻塞，后端 I/O 线程会定期地将新请求队列中的所有 Call 实例全部搬移到待发送请求队列中进行处理**。图中的待发送请求队列和处理中请求队列只由后端 I/O 线程处理，因此无需任何锁机制来保证线程安全。
+
+当 I/O 线程在处理某个请求时，它会显式地将该请求保存在处理中请求队列。一旦处理完成，I/O 线程会自动地调用 Call 对象中的回调逻辑完成最后的处理。把这些都做完之后，I/O 线程会通知前端主线程说结果已经准备完毕，这样前端主线程能够及时获取到执行操作的结果。*AdminClient 是使用 Java Object 对象的 wait 和 notify 实现的这种通知机制*。
+
+严格来说，AdminClient 并没有使用 Java 已有的队列去实现上面的请求队列，它是使用 ArrayList 和 HashMap 这样的简单容器类，再配以 monitor 锁来保证线程安全的。不过，鉴于它们充当的角色就是请求队列这样的主体，我还是坚持使用队列来指代它们了。
+
+了解 AdminClient 工作原理的一个好处在于，**它能够帮助我们有针对性地对调用 AdminClient 的程序进行调试**。
+
+刚刚提到的后端 I/O 线程其实是有名字的，名字的前缀是 `kafka-admin-client-thread`。有时候我们会发现，AdminClient 程序貌似在正常工作，但执行的操作没有返回结果，或者 hang 住了，现在你应该知道这可能是因为 I/O 线程出现问题导致的。如果你碰到了类似的问题，不妨使用 `jstack 命令`去查看一下你的 AdminClient 程序，确认下 I/O 线程是否在正常工作。
+
+实际上，这是实实在在的社区 bug。出现这个问题的根本原因，就是 I/O 线程未捕获某些异常导致意外“挂”掉。由于 AdminClient 是双线程的设计，前端主线程不受任何影响，依然可以正常接收用户发送的命令请求，但此时程序已经不能正常工作了。
+
+### 构造和销毁 AdminClient 实例
+
+如果你正确地引入了 kafka-clients 依赖，那么你应该可以在编写 Java 程序时看到 AdminClient 对象。切记它的完整类路径是 **`org.apache.kafka.clients.admin.AdminClient`**，而不是 ~~`kafka.admin.AdminClient`~~。后者就是我们刚才说的服务器端的 AdminClient，它已经不被推荐使用了。
+
+创建 AdminClient 实例和创建 KafkaProducer 或 KafkaConsumer 实例的方法是类似的，你需要手动构造一个 Properties 对象或 Map 对象，然后传给对应的方法。社区专门为 AdminClient 提供了几十个专属参数，最常见而且必须要指定的参数，是我们熟知的 `bootstrap.servers` 参数。如果要销毁 AdminClient 实例，需要显式调用 AdminClient 的 close 方法。
+
+你可以简单使用下面的代码同时实现 AdminClient 实例的创建与销毁。
+
+```java
+Properties props = new Properties();
+props.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, "kafka-host:port");
+props.put("request.timeout.ms", 600000);
+
+try (AdminClient client = AdminClient.create(props)) {
+         // 执行你要做的操作……
+}
+```
+
+### 常见的 AdminClient 应用实例
+
+#### 创建主题
+
+```java
+String newTopicName = "test-topic";
+try (AdminClient client = AdminClient.create(props)) {
+  NewTopic newTopic = new NewTopic(newTopicName, 10, (short) 3);
+  CreateTopicsResult result = client.createTopics(Arrays.asList(newTopic));
+  result.all().get(10, TimeUnit.SECONDS);
+}
+```
+
+这段代码调用 AdminClient 的 createTopics 方法创建对应的主题。构造主题的类是 NewTopic 类，它接收主题名称、分区数和副本数三个字段。
+
+注意这段代码倒数第二行获取结果的方法。目前，AdminClient 各个方法的返回类型都是名为 ***Result 的对象。这类对象会将结果以 Java Future 的形式封装起来。如果要获取运行结果，你需要调用相应的方法来获取对应的 Future 对象，然后再调用相应的 get 方法来取得执行结果。
+
+当然，对于创建主题而言，一旦主题被成功创建，任务也就完成了，它返回的结果也就不重要了，只要没有抛出异常就行。
+
+#### 查询消费者组位移
+
+```java
+String groupID = "test-group";
+try (AdminClient client = AdminClient.create(props)) {
+  ListConsumerGroupOffsetsResult result = client.listConsumerGroupOffsets(groupID);
+  Map<TopicPartition, OffsetAndMetadata> offsets =  
+    result.partitionsToOffsetAndMetadata().get(10, TimeUnit.SECONDS);
+  System.out.println(offsets);
+}
+```
+
+*我们调用 AdminClient 的 listConsumerGroupOffsets 方法去获取指定消费者组的位移数据。它返回的 Map 对象中保存着按照分区分组的位移数据*。你可以调用 OffsetAndMetadata 对象的 offset() 方法拿到实际的位移数据。
+
+#### 获取 Broker 磁盘占用
+
+*使用 AdminClient 来获取某台 Broker 上 Kafka 主题占用的磁盘空间量*。目前 Kafka 的 JMX 监控指标没有提供这样的功能，而磁盘占用这件事，是很多 Kafka 运维人员要实时监控并且极为重视的。
+
+```java
+try (AdminClient client = AdminClient.create(props)) {
+  // 指定Broker id
+  DescribeLogDirsResult ret = client.describeLogDirs(Collections.singletonList(targetBrokerId));
+  long size = 0L;
+  for (Map<String, DescribeLogDirsResponse.LogDirInfo> logDirInfoMap : ret.all().get().values()) {
+    size += logDirInfoMap.values()
+      .stream().map(logDirInfo -> logDirInfo.replicaInfos)
+      .flatMap(topicPartitionReplicaInfoMap ->
+               topicPartitionReplicaInfoMap.values().stream().map(replicaInfo -> replicaInfo.size))
+      .mapToLong(Long::longValue).sum();
+  }
+  System.out.println(size);
+}
+```
+
+这段代码的主要思想是，使用 AdminClient 的 describeLogDirs 方法获取指定 Broker 上所有分区主题的日志路径信息，然后把它们累积在一起，得出总的磁盘占用量。
+
+## 33 | Kafka认证机制用哪家
+
+### 什么是认证机制
+
+所谓认证，又称“验证”“鉴权”，英文是 authentication，是指通过一定的手段，完成对用户身份的确认。认证的主要目的是确认当前声称为某种身份的用户确实是所声称的用户。
+
+在计算机领域，经常和认证搞混的一个术语就是授权，英文是 authorization。授权一般是指对信息安全或计算机安全相关的资源定义与授予相应的访问权限。
+
+在 Kafka 中，认证和授权是两套独立的安全配置。
+
+### Kafka 认证机制
+
+自 **0.9.0.0 版本**开始，Kafka 正式引入了认证机制，用于实现基础的安全用户认证，这是将 Kafka 上云或进行多租户管理的必要步骤。截止到当前最新的 *2.3 版本，Kafka 支持基于 SSL 和基于 SASL 的安全认证机制*。
+
+**基于 SSL 的认证主要是指 Broker 和客户端的双路认证（2-way authentication）**。通常来说，SSL 加密（Encryption）已经启用了单向认证，即客户端认证 Broker 的证书（Certificate）。如果要做 SSL 认证，那么我们要启用双路认证，也就是说 Broker 也要认证客户端的证书。
+
+Kafka 的源码中依然是使用 SSL 而不是 TLS 来表示这类东西的，书中出现的所有 SSL 字眼，你都可以认为它们是和 TLS 等价的。
+
+Kafka 还支持通过 SASL 做客户端认证。*SASL 是提供认证和数据安全服务的框架*。Kafka 支持的 SASL 机制有 5 种，它们分别是在不同版本中被引入的，你需要根据你自己使用的 Kafka 版本，来选择该版本所支持的认证机制。
+
+1. GSSAPI：也就是 Kerberos 使用的安全接口，是在 0.9 版本中被引入的。
+2. PLAIN：是使用简单的用户名 / 密码认证的机制，在 0.10 版本中被引入。
+3. SCRAM：主要用于解决 PLAIN 机制安全问题的新机制，是在 0.10.2 版本中被引入的。
+4. OAUTHBEARER：是基于 OAuth 2 认证框架的新机制，在 2.0 版本中被引进。
+5. Delegation Token：补充现有 SASL 机制的轻量级认证机制，是在 1.1.0 版本被引入的。
+
+### 认证机制的比较
+
+目前来看，使用 SSL 做信道加密的情况更多一些，但使用 SSL 实现认证不如使用 SASL。毕竟，SASL 能够支持你选择不同的实现机制，如 GSSAPI、SCRAM、PLAIN 等。因此，我的建议是你可以*使用 SSL 来做通信加密，使用 SASL 来做 Kafka 的认证实现*。
+
+SASL 下又细分了很多种认证机制，我们应该如何选择呢？
+
+- SASL/GSSAPI 
+  SASL/GSSAPI 主要是给 Kerberos 使用的。如果你的公司已经做了 Kerberos 认证（比如使用 Active Directory），那么使用 GSSAPI 是最方便的了。因为你不需要额外地搭建 Kerberos，只要让你们的 Kerberos 管理员给每个 Broker 和要访问 Kafka 集群的操作系统用户申请 principal 就好了。总之，**GSSAPI 适用于本身已经做了 Kerberos 认证的场景，这样的话，SASL/GSSAPI 可以实现无缝集成**。
+
+- SASL/PLAIN
+  而 SASL/PLAIN，就像前面说到的，它是一个简单的用户名 / 密码认证机制，通常与 SSL 加密搭配使用。*注意，这里的 PLAIN 和 PLAINTEXT 是两回事。PLAIN 在这里是一种认证机制，而 PLAINTEXT 说的是未使用 SSL 时的明文传输。*对于一些小公司而言，搭建公司级的 Kerberos 可能并没有什么必要，他们的用户系统也不复杂，特别是访问 Kafka 集群的用户可能不是很多。对于 SASL/PLAIN 而言，这就是一个非常合适的应用场景。总体来说，**SASL/PLAIN 的配置和运维成本相对较小，适合于小型公司中的 Kafka 集群**。但是，SASL/PLAIN 有这样一个弊端：*它不能动态地增减认证用户，你必须重启 Kafka 集群才能令变更生效*。为什么呢？这是因为所有认证用户信息全部保存在静态文件中，所以只能重启 Broker，才能重新加载变更后的静态文件。
+
+- SASL/SCRAM
+  重启集群在很多场景下都是令人不爽的，即使是轮替式升级（Rolling Upgrade）。SASL/SCRAM 就解决了这样的问题。它通过将认证用户信息保存在 ZooKeeper 的方式，避免了动态修改需要重启 Broker 的弊端。在实际使用过程中，你可以使用 Kafka 提供的命令动态地创建和删除用户，无需重启整个集群。因此，**如果你打算使用 SASL/PLAIN，不妨改用 SASL/SCRAM 试试**。不过要注意的是，后者是 **0.10.2 版本**引入的。你至少要升级到这个版本后才能使用。
+  
+- SASL/OAUTHBEARER
+  SASL/OAUTHBEARER 是 2.0 版本引入的新认证机制，主要是为了实现与 OAuth 2 框架的集成。OAuth 是一个开发标准，允许用户授权第三方应用访问该用户在某网站上的资源，而无需将用户名和密码提供给第三方应用。Kafka 不提倡单纯使用 OAUTHBEARER，因为它生成的不安全的 JSON Web Token，必须配以 SSL 加密才能用在生产环境中。当然，鉴于它是 2.0 版本才推出来的，而且目前没有太多的实际使用案例，我们可以先观望一段时间，再酌情将其应用于生产环境中。
+
+- Delegation Token
+  Delegation Token 是在 1.1 版本引入的，它是一种轻量级的认证机制，主要目的是补充现有的 SASL 或 SSL 认证。如果要使用 Delegation Token，你需要先配置好 SASL 认证，然后再利用 Kafka 提供的 API 去获取对应的 Delegation Token。这样，Broker 和客户端在做认证的时候，可以直接使用这个 token，不用每次都去 KDC 获取对应的 ticket（Kerberos 认证）或传输 Keystore 文件（SSL 认证）。
+
+汇总
+
+![](images/1053.png)
+
+### SASL/SCRAM-SHA-256 配置实例
+
+接下来，展示 SASL/SCRAM 的一个配置实例，来说明一下如何在 Kafka 集群中开启认证。其他认证机制的设置方法也是类似的，比如它们都涉及认证用户的创建、Broker 端以及 Client 端特定参数的配置等。
+
+#### 第 1 步：创建用户
+
+配置 SASL/SCRAM 的第一步，是创建能否连接 Kafka 集群的用户。在本次测试中，我会创建 3 个用户，分别是 admin 用户、writer 用户和 reader 用户。admin 用户用于实现 Broker 间通信，writer 用户用于生产消息，reader 用户用于消费消息。
+
+使用下面这 3 条命令，分别来创建它们。
+
+```bash
+$ cd kafka_2.12-2.3.0/
+$ bin/kafka-configs.sh --zookeeper localhost:2181 --alter --add-config 'SCRAM-SHA-256=[password=admin],SCRAM-SHA-512=[password=admin]' --entity-type users --entity-name admin
+Completed Updating config for entity: user-principal 'admin'.
+
+$ bin/kafka-configs.sh --zookeeper localhost:2181 --alter --add-config 'SCRAM-SHA-256=[password=writer],SCRAM-SHA-512=[password=writer]' --entity-type users --entity-name writer
+Completed Updating config for entity: user-principal 'writer'.
+
+$ bin/kafka-configs.sh --zookeeper localhost:2181 --alter --add-config 'SCRAM-SHA-256=[password=reader],SCRAM-SHA-512=[password=reader]' --entity-type users --entity-name reader
+Completed Updating config for entity: user-principal 'reader'.
+```
+
+前面提到过，`kafka-configs` 脚本是用来设置主题级别参数的。其实，它的功能还有很多。比如在这个例子中，我们使用它来创建 SASL/SCRAM 认证中的用户信息。我们可以使用下列命令来查看刚才创建的用户数据。
+
+```bash
+$ bin/kafka-configs.sh --zookeeper localhost:2181 --describe --entity-type users  --entity-name writer
+Configs for user-principal 'writer' are SCRAM-SHA-512=salt=MWt6OGplZHF6YnF5bmEyam9jamRwdWlqZWQ=,stored_key=hR7+vgeCEz61OmnMezsqKQkJwMCAoTTxw2jftYiXCHxDfaaQU7+9/dYBq8bFuTio832mTHk89B4Yh9frj/ampw==,server_key=C0k6J+9/InYRohogXb3HOlG7s84EXAs/iw0jGOnnQAt4jxQODRzeGxNm+18HZFyPn7qF9JmAqgtcU7hgA74zfA==,iterations=4096,SCRAM-SHA-256=salt=MWV0cDFtbXY5Nm5icWloajdnbjljZ3JqeGs=,stored_key=sKjmeZe4sXTAnUTL1CQC7DkMtC+mqKtRY0heEHvRyPk=,server_key=kW7CC3PBj+JRGtCOtIbAMefL8aiL8ZrUgF5tfomsWVA=,iterations=4096
+```
+
+这段命令包含了 writer 用户加密算法 SCRAM-SHA-256 以及 SCRAM-SHA-512 对应的盐值 (Salt)、ServerKey 和 StoreKey。这些都是 SCRAM 机制的术语，我们不需要了解它们的含义，因为它们并不影响我们接下来的配置。
+
+#### 第 2 步：创建 JAAS 文件
+
+配置了用户之后，我们需要为每个 Broker 创建一个对应的 JAAS 文件。因为本例中的两个 Broker 实例是在一台机器上，所以我只创建了一份 JAAS 文件。但是你要切记，在实际场景中，你需要为每台单独的物理 Broker 机器都创建一份 JAAS 文件。
+
+JAAS 的文件内容如下：
+
+```json
+KafkaServer {
+org.apache.kafka.common.security.scram.ScramLoginModule required
+username="admin"
+password="admin";
+};
+```
+
+关于这个文件内容，你需要注意以下两点：
+
+- 不要忘记最后一行和倒数第二行结尾处的分号`；`
+- JAAS 文件中不需要任何空格键。
+
+这里，我们使用 admin 用户实现 Broker 之间的通信。接下来，我们来配置 Broker 的 server.properties 文件，下面这些内容，是需要单独配置的：
+
+```properties
+sasl.enabled.mechanisms=SCRAM-SHA-256
+sasl.mechanism.inter.broker.protocol=SCRAM-SHA-256
+security.inter.broker.protocol=SASL_PLAINTEXT
+listeners=SASL_PLAINTEXT://localhost:9092
+```
+
+第 1 项内容表明开启 SCRAM 认证机制，并启用 SHA-256 算法；第 2 项的意思是为 Broker 间通信也开启 SCRAM 认证，同样使用 SHA-256 算法；第 3 项表示 Broker 间通信不配置 SSL，本例中我们不演示 SSL 的配置；最后 1 项是设置 listeners 使用 SASL_PLAINTEXT，依然是不使用 SSL。
+
+另一台 Broker 的配置基本和它类似，只是要使用不同的端口，在这个例子中，端口是 9093。
+
+#### 第 3 步：启动 Broker
+
+现在我们分别启动这两个 Broker。在启动时，你需要指定 JAAS 文件的位置，如下所示：
+
+```sh
+$KAFKA_OPTS=-Djava.security.auth.login.config=<your_path>/kafka-broker.jaas bin/kafka-server-start.sh config/server1.properties
+......
+[2019-07-02 13:30:34,822] INFO Kafka commitId: fc1aaa116b661c8a (org.apache.kafka.common.utils.AppInfoParser)
+[2019-07-02 13:30:34,822] INFO Kafka startTimeMs: 1562045434820 (org.apache.kafka.common.utils.AppInfoParser)
+[2019-07-02 13:30:34,823] INFO [KafkaServer id=0] started (kafka.server.KafkaServer)
+```
+
+```sh
+$KAFKA_OPTS=-Djava.security.auth.login.config=<your_path>/kafka-broker.jaas bin/kafka-server-start.sh config/server2.properties
+......
+[2019-07-02 13:32:31,976] INFO Kafka commitId: fc1aaa116b661c8a (org.apache.kafka.common.utils.AppInfoParser)
+[2019-07-02 13:32:31,976] INFO Kafka startTimeMs: 1562045551973 (org.apache.kafka.common.utils.AppInfoParser)
+[2019-07-02 13:32:31,978] INFO [KafkaServer id=1] started (kafka.server.KafkaServer)
+```
+
+此时，两台 Broker 都已经成功启动了。
+
+#### 第 4 步：发送消息
+
+在创建好测试主题之后，我们使用 `kafka-console-producer` 脚本来尝试发送消息。由于启用了认证，客户端需要做一些相应的配置。我们创建一个名为 `producer.conf` 的配置文件，内容如下：
+
+```properties
+security.protocol=SASL_PLAINTEXT
+sasl.mechanism=SCRAM-SHA-256
+sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required username="writer" password="writer";
+```
+
+之后运行 Console Producer 程序：
+
+```sh
+$ bin/kafka-console-producer.sh --broker-list localhost:9092,localhost:9093 --topic test  --producer.config <your_path>/producer.conf
+>hello, world
+>   
+```
+
+可以看到，Console Producer 程序发送消息成功。
+
+#### 第 5 步：消费消息
+
+接下来，我们使用 Console Consumer 程序来消费一下刚刚生产的消息。同样地，我们需要为 `kafka-console-consumer` 脚本创建一个名为 `consumer.conf` 的脚本，内容如下：
+
+```properties
+security.protocol=SASL_PLAINTEXT
+sasl.mechanism=SCRAM-SHA-256
+sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required username="reader" password="reader";
+```
+
+之后运行 Console Consumer 程序：
+
+```sh
+$ bin/kafka-console-consumer.sh --bootstrap-server localhost:9092,localhost:9093 --topic test --from-beginning --consumer.config <your_path>/consumer.conf 
+hello, world
+```
+
+很显然，我们是可以正常消费的。
+
+#### 第 6 步：动态增减用户
+
+最后，来演示 SASL/SCRAM 动态增减用户的场景。假设我删除了 writer 用户，同时又添加了一个新用户：new_writer，那么，我们需要执行的命令如下：
+
+```sh
+$ bin/kafka-configs.sh --zookeeper localhost:2181 --alter --delete-config 'SCRAM-SHA-256' --entity-type users --entity-name writer
+Completed Updating config for entity: user-principal 'writer'.
+
+$ bin/kafka-configs.sh --zookeeper localhost:2181 --alter --delete-config 'SCRAM-SHA-512' --entity-type users --entity-name writer
+Completed Updating config for entity: user-principal 'writer'.
+
+$ bin/kafka-configs.sh --zookeeper localhost:2181 --alter --add-config 'SCRAM-SHA-256=[iterations=8192,password=new_writer]' --entity-type users --entity-name new_writer
+Completed Updating config for entity: user-principal 'new_writer'.
+```
+
+现在，我们依然使用刚才的 producer.conf 来验证，以确认 Console Producer 程序不能发送消息。
+
+```sh
+$ bin/kafka-console-producer.sh --broker-list localhost:9092,localhost:9093 --topic test  --producer.config /Users/huxi/testenv/producer.conf
+>[2019-07-02 13:54:29,695] ERROR [Producer clientId=console-producer] Connection to node -1 (localhost/127.0.0.1:9092) failed authentication due to: Authentication failed during authentication due to invalid credentials with SASL mechanism SCRAM-SHA-256 (org.apache.kafka.clients.NetworkClient)
+......
+```
+
+很显然，此时 Console Producer 已经不能发送消息了。因为它使用的 producer.conf 文件指定的是已经被删除的 writer 用户。如果我们修改 producer.conf 的内容，改为指定新创建的 new_writer 用户，结果如下：
+
+```sh
+$ bin/kafka-console-producer.sh --broker-list localhost:9092,localhost:9093 --topic test  --producer.config <your_path>/producer.conf
+>Good!  
+```
+
+现在，Console Producer 可以正常发送消息了。
+
+这个过程完整地展示了 SASL/SCRAM 是如何在不重启 Broker 的情况下增减用户的。至此，SASL/SCRAM 配置就完成了。在下一讲中，详细介绍一下如何赋予 writer 和 reader 用户不同的权限。
+
+## 34 | 云环境下的授权该怎么做
+
+### 什么是授权机制
+
+所谓授权，一般是指对与信息安全或计算机安全相关的资源授予访问权限，特别是存取控制。
+
+具体到权限模型，常见的有四种。
+
+- ACL：Access-Control List，访问控制列表。
+- RBAC：Role-Based Access Control，基于角色的权限控制。
+- ABAC：Attribute-Based Access Control，基于属性的权限控制。
+- PBAC：Policy-Based Access Control，基于策略的权限控制。
+
+在典型的互联网场景中，前两种模型应用得多，后面这两种则比较少用。
+
+ACL 模型很简单，它表征的是用户与权限的直接映射关系，如下图所示：
+
+<img src="images/1054.png" style="zoom:33%;" />
+
+而 RBAC 模型则加入了角色的概念，支持对用户进行分组，如下图所示：
+
+<img src="images/1055.png" style="zoom:33%;" />
+
+Kafka 没有使用 RBAC 模型，它用的是 **ACL 模型**。简单来说，*这种模型就是规定了什么用户对什么资源有什么样的访问权限*。我们可以借用官网的一句话来统一表示这种模型：“Principal P is [Allowed/Denied] Operation O From Host H On Resource R.” 这句话中出现了很多个主体，分别解释下它们的含义。
+
+- Principal：表示访问 Kafka 集群的用户。
+- Operation：表示一个具体的访问类型，如读写消息或创建主题等。
+- Host：表示连接 Kafka 集群的客户端应用程序 IP 地址。Host 支持星号占位符，表示所有 IP 地址。
+- Resource：表示 Kafka 资源类型。如果以最新的 2.3 版本为例，Resource 共有 5 种，分别是 TOPIC、CLUSTER、GROUP、TRANSACTIONALID 和 DELEGATION TOKEN。
+
+当前，Kafka 提供了一个可插拔的授权实现机制。该机制会将你配置的所有 ACL 项保存在 ZooKeeper 下的 `/kafka-acl` 节点中。你可以通过 Kafka 自带的 kafka-acls 脚本动态地对 ACL 项进行增删改查，并让它立即生效。
+
+### 如何开启 ACL
+
+在 Kafka 中，开启 ACL 的方法特别简单，你只需要在 Broker 端的配置文件中增加一行设置即可，也就是在 server.properties 文件中配置下面这个参数值：
+
+```properties
+authorizer.class.name=kafka.security.auth.SimpleAclAuthorizer
+```
+
+`authorizer.class.name` 参数指定了 ACL 授权机制的实现类。当前 Kafka 提供了 Authorizer 接口，允许你实现你自己的授权机制，但更常见的做法，还是直接使用 Kafka 自带的 SimpleAclAuthorizer 实现类。一旦设置好这个参数的值，并且启动 Broker 后，该 Broker 就默认开启了 ACL 授权验证。在实际生产环境中，你需要为集群中的每台 Broker 都做此设置。
+
+### 超级用户（Super User）
+
+在开启了 ACL 授权之后，你还必须显式地为不同用户设置访问某项资源的权限，否则，在默认情况下，没有配置任何 ACL 的资源是不能被访问的。不过，这里也有一个例外：**超级用户能够访问所有的资源，即使你没有为它们设置任何 ACL 项**。
+
+那么，我们如何在一个 Kafka 集群中设置超级用户呢？方法很简单，只需要在 Broker 端的配置文件 server.properties 中，设置 super.users 参数即可，比如：
+
+```properties
+super.users=User:superuser1;User:superuser2
+```
+
+注意，**如果你要一次性指定多个超级用户，那么分隔符是分号而不是逗号，这是为了避免出现用户名中包含逗号从而无法分割的问题**。
+
+除了设置 `super.users` 参数，Kafka 还支持将所有用户都配置成超级用户的用法。如果我们在 `server.properties` 文件中设置 `allow.everyone.if.no.acl.found=true`，那么所有用户都可以访问没有设置任何 ACL 的资源。不过，我个人不太建议进行这样的设置。毕竟，在生产环境中，特别是在那些对安全有较高要求的环境中，采用白名单机制要比黑名单机制更加令人放心。
+
+### kafka-acls 脚本
+
+在了解了 Kafka 的 ACL 概念之后，我们来看一下如何设置它们。当前在 Kafka 中，配置授权的方法是通过 kafka-acls 脚本。举个例子，如果我们要为用户 Alice 增加了集群级别的所有权限，那么我们可以使用下面这段命令。
+
+```sh
+$ kafka-acls --authorizer-properties zookeeper.connect=localhost:2181 --add --allow-principal User:Alice --operation All --topic '*' --cluster
+```
+
+在这个命令中，All 表示所有操作，topic 中的星号则表示所有主题，指定 --cluster 则说明我们要为 Alice 设置的是集群权限。
+
+这个脚本的参数有很多，我们再来看看它的另一个常见用法。
+
+```sh
+$ bin/kafka-acls --authorizer-properties zookeeper.connect=localhost:2181 --add --allow-principal User:'*' --allow-host '*' --deny-principal User:BadUser --deny-host 10.205.96.119 --operation Read --topic test-topic
+```
+
+User 后面的星号表示所有用户，allow-host 后面的星号则表示所有 IP 地址。这个命令的意思是，允许所有的用户使用任意的 IP 地址读取名为 test-topic 的主题数据，同时也禁止 BadUser 用户和 `10.205.96.119` 的 IP 地址访问 `test-topic` 下的消息。
+
+kafka-acls 脚本还有其他的功能，比如删除 ACL、查询已有 ACL 等。它们的实际用法与上面这条命令类似，我在这里就不一一列举了，你可以使用 kafka-acls.sh 来查询它的所有用法。
+
+### ACL 权限列表
+
+下面这张表格，它完整地展示了 Kafka 所有的 ACL 权限。
+
+<img src="images/1056.png" style="zoom:33%;" />
+
+看到这么大一张表格，你是不是很惊讶？其实，这恰好证明 Kafka 当前提供的授权机制是非常细粒度的。
+
+举个例子，假如你要为你的生产者程序赋予写权限，那么首先，你要在 Resource 列找到 Topic 类型的权限，然后在 Operation 列寻找 WRITE 操作权限。这个 WRITE 权限是限制 Producer 程序能否向对应主题发送消息的关键。通常情况下，Producer 程序还可能有创建主题、获取主题数据的权限，所以 Kafka 为 Producer 需要的这些常见权限创建了快捷方式，即 --producer。也就是说，在执行 kafka-acls 命令时，直接指定 --producer 就能同时获得这三个权限了。 --consumer 也是类似的，指定 --consumer 可以同时获得 Consumer 端应用所需的权限。
+
+### 授权机制能否单独使用
+
+Kafka 授权机制能不配置认证机制而单独使用吗？其实，这是可以的，只是你只能为 IP 地址设置权限。比如，下面这个命令会禁止运行在 127.0.0.1IP 地址上的 Producer 应用向 test 主题发送数据：
+
+```sh
+$ bin/kafka-acls.sh --authorizer-properties zookeeper.connect=localhost:2181 --add --deny-principal User:* --deny-host 127.0.0.1 --operation Write --topic test
+
+$ bin/kafka-console-producer.sh --broker-list localhost:9092 --topic test
+>hello
+[2019-07-16 10:10:57,283] WARN [Producer clientId=console-producer] Error while fetching metadata with correlation id 3 : {test=TOPIC_AUTHORIZATION_FAILED} (org.apache.kafka.clients.NetworkClient)
+[2019-07-16 10:10:57,284] ERROR [Producer clientId=console-producer] Topic authorization failed for topics [test] (org.apache.kafka.clients.Metadata)
+[2019-07-16 10:10:57,284] ERROR Error when sending message to topic test with key: null, value: 5 bytes with error: (org.apache.kafka.clients.producer.internals.ErrorLoggingCallback)
+org.apache.kafka.common.errors.TopicAuthorizationException: <span class="orange">Not authorized to access topics: [test]</span class="orange">
+```
+
+请注意一下输出中的橙色字体部分。虽然没有设置任何认证机制，但是通过设置 IP 地址的 ACL 授权，我们依然可以禁止这些 IP 地址上的客户端访问 Kafka 资源。不过，尽管授权机制能够有限度地单独使用，但我更推荐的做法是，和我们在专栏上一讲提到的认证机制搭配使用。
+
+### 配置实例
+
+SSL + ACL 配置的实例
+
+在演示 ACL 之前，我先简单说一下 SSL 的配置。我给出一个 SHELL 脚本，它可以方便你设置 SSL，代码如下：
+
+```bash
+#!/bin/bash
+
+#设置环境变量
+BASE_DIR=/Users/huxi/testenv #你需要修改此处
+CERT_OUTPUT_PATH="$BASE_DIR/certificates"
+PASSWORD=test1234
+KEY_STORE="$CERT_OUTPUT_PATH/server.keystore.jks"
+TRUST_STORE="$CERT_OUTPUT_PATH/server.truststore.jks"
+CLIENT_KEY_STORE="$CERT_OUTPUT_PATH/client.keystore.jks"
+CLIENT_TRUST_STORE="$CERT_OUTPUT_PATH/client.truststore.jks"
+KEY_PASSWORD=$PASSWORD
+STORE_PASSWORD=$PASSWORD
+TRUST_KEY_PASSWORD=$PASSWORD
+TRUST_STORE_PASSWORD=$PASSWORD
+CERT_AUTH_FILE="$CERT_OUTPUT_PATH/ca-cert"
+DAYS_VALID=365
+DNAME="CN=Xi Hu, OU=YourDept, O=YourCompany, L=Beijing, ST=Beijing, C=CN"
 
 
+mkdir -p $CERT_OUTPUT_PATH
 
+echo "1. 产生key和证书......"
+keytool -keystore $KEY_STORE -alias kafka-server -validity $DAYS_VALID -genkey -keyalg RSA \
+-storepass $STORE_PASSWORD -keypass $KEY_PASSWORD -dname "$DNAME"
 
+keytool -keystore $CLIENT_KEY_STORE -alias kafka-client -validity $DAYS_VALID -genkey -keyalg RSA \
+-storepass $STORE_PASSWORD -keypass $KEY_PASSWORD -dname "$DNAME"
 
+echo "2. 创建CA......"
+openssl req -new -x509 -keyout $CERT_OUTPUT_PATH/ca-key -out "$CERT_AUTH_FILE" -days "$DAYS_VALID" \
+-passin pass:"$PASSWORD" -passout pass:"$PASSWORD" \
+-subj "/C=CN/ST=Beijing/L=Beijing/O=YourCompany/OU=YourDept,CN=Xi Hu"
 
+echo "3. 添加CA文件到broker truststore......"
+keytool -keystore "$TRUST_STORE" -alias CARoot \
+-importcert -file "$CERT_AUTH_FILE" -storepass "$TRUST_STORE_PASSWORD" -keypass "$TRUST_KEY_PASS" -noprompt
 
+echo "4. 添加CA文件到client truststore......"
+keytool -keystore "$CLIENT_TRUST_STORE" -alias CARoot \
+-importcert -file "$CERT_AUTH_FILE" -storepass "$TRUST_STORE_PASSWORD" -keypass "$TRUST_KEY_PASS" -noprompt
 
+echo "5. 从keystore中导出集群证书......"
+keytool -keystore "$KEY_STORE" -alias kafka-server -certreq -file "$CERT_OUTPUT_PATH/server-cert-file" \
+-storepass "$STORE_PASSWORD" -keypass "$KEY_PASSWORD" -noprompt
 
+keytool -keystore "$CLIENT_KEY_STORE" -alias kafka-client -certreq -file "$CERT_OUTPUT_PATH/client-cert-file" \
+-storepass "$STORE_PASSWORD" -keypass "$KEY_PASSWORD" -noprompt
 
+echo "6. 使用CA签发证书......"
+openssl x509 -req -CA "$CERT_AUTH_FILE" -CAkey $CERT_OUTPUT_PATH/ca-key -in "$CERT_OUTPUT_PATH/server-cert-file" \
+-out "$CERT_OUTPUT_PATH/server-cert-signed" -days "$DAYS_VALID" -CAcreateserial -passin pass:"$PASSWORD"
+
+openssl x509 -req -CA "$CERT_AUTH_FILE" -CAkey $CERT_OUTPUT_PATH/ca-key -in "$CERT_OUTPUT_PATH/client-cert-file" \
+-out "$CERT_OUTPUT_PATH/client-cert-signed" -days "$DAYS_VALID" -CAcreateserial -passin pass:"$PASSWORD"
+
+echo "7. 导入CA文件到keystore......"
+keytool -keystore "$KEY_STORE" -alias CARoot -import -file "$CERT_AUTH_FILE" -storepass "$STORE_PASSWORD" \
+ -keypass "$KEY_PASSWORD" -noprompt
+
+keytool -keystore "$CLIENT_KEY_STORE" -alias CARoot -import -file "$CERT_AUTH_FILE" -storepass "$STORE_PASSWORD" \
+ -keypass "$KEY_PASSWORD" -noprompt
+
+echo "8. 导入已签发证书到keystore......"
+keytool -keystore "$KEY_STORE" -alias kafka-server -import -file "$CERT_OUTPUT_PATH/server-cert-signed" \
+ -storepass "$STORE_PASSWORD" -keypass "$KEY_PASSWORD" -noprompt
+
+keytool -keystore "$CLIENT_KEY_STORE" -alias kafka-client -import -file "$CERT_OUTPUT_PATH/client-cert-signed" \
+ -storepass "$STORE_PASSWORD" -keypass "$KEY_PASSWORD" -noprompt
+
+echo "9. 删除临时文件......"
+rm "$CERT_OUTPUT_PATH/ca-cert.srl"
+rm "$CERT_OUTPUT_PATH/server-cert-signed"
+rm "$CERT_OUTPUT_PATH/client-cert-signed"
+rm "$CERT_OUTPUT_PATH/server-cert-file"
+rm "$CERT_OUTPUT_PATH/client-cert-file"
+```
+
+你可以把上面的代码保存成一个 SHELL 脚本，然后在一台 Broker 上运行。该脚本主要的产出是 4 个文件，分别是：`server.keystore.jks`、`server.truststore.jks`、`client.keystore.jks` 和 `client.truststore.jks`。
+
+你需要把以 server 开头的两个文件，拷贝到集群中的所有 Broker 机器上，把以 client 开头的两个文件，拷贝到所有要连接 Kafka 集群的客户端应用程序机器上。
+
+接着，你要配置每个 Broker 的 server.properties 文件，增加以下内容：
+
+```properties
+listeners=SSL://localhost:9093
+ssl.truststore.location=/Users/huxi/testenv/certificates/server.truststore.jks
+ssl.truststore.password=test1234
+ssl.keystore.location=/Users/huxi/testenv/certificates/server.keystore.jks
+ssl.keystore.password=test1234
+security.inter.broker.protocol=SSL
+ssl.client.auth=required
+ssl.key.password=test1234
+```
+
+现在我们启动 Broker 进程。倘若你发现无法启动或启动失败，那么你需要检查一下报错信息，看看和上面的哪些配置有关，然后有针对性地进行调整。接下来，我们来配置客户端的 SSL。
+
+首先，我们要创建一个名为 client-ssl.config 的文件，内容如下：
+
+```properties
+security.protocol=SSL
+ssl.truststore.location=/Users/huxi/testenv/certificates/client.truststore.jks
+ssl.truststore.password=test1234
+ssl.keystore.location=/Users/huxi/testenv/certificates/server.keystore.jks
+ssl.keystore.password=test1234
+ssl.key.password=test1234
+ssl.endpoint.identification.algorithm=
+```
+
+注意，一定要加上最后一行。因为自 **Kafka 2.0 版本**开始，它默认会验证服务器端的主机名是否匹配 Broker 端证书里的主机名。如果你要禁掉此功能的话，一定要将该参数设置为空字符串。
+
+配置好这些，你可以使用 ConsoleConsumer 和 ConsoleProducer 来测试一下 Producer 和 Consumer 是否能够正常工作。比如，下列命令指定 producer-config 指向刚才我们创建的 client-ssl 配置文件。
+
+```sh
+$ bin/kafka-console-producer.sh --broker-list localhost:9093 --topic test --producer.config client-ssl.config
+```
+
+接下来，说一下 ACL 的配置。
+
+如果你在运营一个云上的 Kafka 集群，那么势必会面临多租户的问题。**除了设置合理的认证机制外，为每个连接 Kafka 集群的客户端授予恰当的权限，也是非常关键的**。
+
+以下列出了一些最佳实践。
+
+第一，就像前面说的，要开启 ACL，你需要设置 authorizer.class.name=kafka.security.auth.SimpleAclAuthorizer。
+
+第二，我建议你采用白名单机制，这样的话，没有显式设置权限的用户就无权访问任何资源。也就是说，在 Kafka 的 server.properties 文件中，不要设置 allow.everyone.if.no.acl.found=true。
+
+第三，你可以使用 kafka-acls 脚本为 SSL 用户授予集群的权限。我们以前面的例子来进行一下说明。
+
+在配置 SSL 时，我们指定用户的 Distinguished Name 为“CN=Xi Hu, OU=YourDept, O=YourCompany, L=Beijing, ST=Beijing, C=CN”。之前在设置 Broker 端参数时，我们指定了 security.inter.broker.protocol=SSL，即强制指定 Broker 间的通讯也采用 SSL 加密。
+
+如果不为指定的 Distinguished Name 授予集群操作的权限，你是无法成功启动 Broker 的。因此，你需要在启动 Broker 之前执行下面的命令：
+
+```sh
+$ bin/kafka-acls.sh --authorizer-properties zookeeper.connect=localhost:2181 --add --allow-principal User:"CN=Xi Hu,OU=YourDept,O=YourCompany,L=Beijing,ST=Beijing,C=CN" --operation All --cluster
+```
+
+第四，你要为客户端程序授予相应的权限，比如为生产者授予 producer 权限，为消费者授予 consumer 权限。假设客户端要访问的主题名字是 test，那么命令如下：
+
+```sh
+# producer
+$ bin/kafka-acls.sh --authorizer-properties zookeeper.connect=localhost:2181 --add --allow-principal User:"CN=Xi Hu,OU=YourDept,O=YourCompany,L=Beijing,ST=Beijing,C=CN" --producer --topic 'test'
+
+# consumer
+$ bin/kafka-acls.sh --authorizer-properties zookeeper.connect=localhost:2181 --add --allow-principal User:"CN=Xi Hu,OU=YourDept,O=YourCompany,L=Beijing,ST=Beijing,C=CN" --consumer --topic 'test' --group '*'
+```
+
+注意这两条命令中的 --producer 和 --consumer，它们类似于一个快捷方式，直接将 Producer 和 Consumer 常用的权限进行了一次性的授予。
+
+作为云环境 PaaS 管理员，除了以上这些必要的权限，你最好不要把其他权限授予客户端，比如创建主题的权限。总之，你授予的权限越少，你的 Kafka 集群就越安全。
+
+## 35 | 跨集群备份解决方案MirrorMaker
 
 
 
