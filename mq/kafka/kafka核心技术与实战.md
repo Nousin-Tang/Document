@@ -3348,6 +3348,863 @@ $ bin/kafka-acls.sh --authorizer-properties zookeeper.connect=localhost:2181 --a
 
 ## 35 | 跨集群备份解决方案MirrorMaker
 
+**通常我们把数据在单个集群下不同节点之间的拷贝称为备份，而把数据在集群间的拷贝称为镜像（Mirroring）**。
+
+### 什么是 MirrorMaker
+
+**实现消息或数据从一个集群到另一个集群的拷贝的工具**。从本质上说，MirrorMaker 就是一个消费者 + 生产者的程序。消费者负责从源集群（Source Cluster）消费数据，生产者负责向目标集群（Target Cluster）发送消息。整个镜像流程如下图所示：
+
+![](images/1057.png)
+
+MirrorMaker 连接的源集群和目标集群，会实时同步消息。当然，你不要认为你只能使用一套 MirrorMaker 来连接上下游集群。事实上，很多用户会部署多套集群，用于实现不同的目的。
+
+我们来看看下面这张图。图中部署了三套集群：左边的源集群负责主要的业务处理；右上角的目标集群可以用于执行数据分析；而右下角的目标集群则充当源集群的热备份。
+
+![](images/1058.png)
+
+### 运行 MirrorMaker
+
+Kafka 默认提供了 MirrorMaker 命令行工具 `kafka-mirror-maker` 脚本，它的*常见用法是指定生产者配置文件、消费者配置文件、线程数以及要执行数据镜像的主题正则表达式*。比如下面的这个命令，就是一个典型的 MirrorMaker 执行命令。
+
+```sh
+$ bin/kafka-mirror-maker.sh --consumer.config ./config/consumer.properties --producer.config ./config/producer.properties --num.streams 8 --whitelist ".*"
+```
+
+- consumer.config 参数。它指定了 MirrorMaker 中消费者的配置文件地址，最主要的配置项是 bootstrap.servers，也就是该 MirrorMaker 从哪个 Kafka 集群读取消息。因为 MirrorMaker 有可能在内部创建多个消费者实例并使用消费者组机制，因此你还需要设置 group.id 参数。另外，我建议你额外配置 auto.offset.reset=earliest，否则的话，MirrorMaker 只会拷贝那些在它启动之后到达源集群的消息。
+- producer.config 参数。它指定了 MirrorMaker 内部生产者组件的配置文件地址。通常来说，Kafka Java Producer 很友好，你不需要配置太多参数。唯一的例外依然是 bootstrap.servers，你必须显式地指定这个参数，配置拷贝的消息要发送到的目标集群。
+- num.streams 参数。我个人觉得，这个参数的名字很容易给人造成误解。第一次看到这个参数名的时候，我一度以为 MirrorMaker 是用 Kafka Streams 组件实现的呢。其实并不是。这个参数就是告诉 MirrorMaker 要创建多少个 KafkaConsumer 实例。当然，它使用的是多线程的方案，即在后台创建并启动多个线程，每个线程维护专属的消费者实例。在实际使用时，你可以根据你的机器性能酌情设置多个线程。
+- whitelist 参数。如命令所示，这个参数接收一个正则表达式。所有匹配该正则表达式的主题都会被自动地执行镜像。在这个命令中，我指定了“.*”，这表明我要同步源集群上的所有主题。
+
+### MirrorMaker 配置实例
+
+首先，我们会启动两套 Kafka 集群，它们是单节点的伪集群，监听端口分别是 9092 和 9093；之后，我们会启动 MirrorMaker 工具，实时地将 9092 集群上的消息同步镜像到 9093 集群上；最后，我们启动额外的消费者来验证消息是否拷贝成功。
+
+#### 第 1 步：启动两套 Kafka 集群
+
+怎么在本地搭建两个kafka集群？
+
+设置zookeeper.connect时使用不同的chroot，比如一个是zk:2181/kafka1，另一个是zk:2181/kafka2
+
+启动日志如下所示：
+
+```java
+[2019-07-23 17:01:40,544] INFO Kafka version: 2.3.0 (org.apache.kafka.common.utils.AppInfoParser)
+[2019-07-23 17:01:40,544] INFO Kafka commitId: fc1aaa116b661c8a(org.apache.kafka.common.utils.AppInfoParser)
+[2019-07-23 17:01:40,544] INFO Kafka startTimeMs: 1563872500540(org.apache.kafka.common.utils.AppInfoParser)[2019-07-23 17:01:40,545] INFO [KafkaServer id=0] started (kafka.server.KafkaServer)
+```
+
+```java
+[2019-07-23 16:59:59,462] INFO Kafka version: 2.3.0 (org.apache.kafka.common.utils.AppInfoParser)
+[2019-07-23 16:59:59,462] INFO Kafka commitId: fc1aaa116b661c8a(org.apache.kafka.common.utils.AppInfoParser)[2019-07-23 16:59:59,462] INFO Kafka startTimeMs: 1563872399459(org.apache.kafka.common.utils.AppInfoParser)[2019-07-23 16:59:59,463] INFO [KafkaServer id=1] started (kafka.server.KafkaServer)
+```
+
+#### 第 2 步：启动 MirrorMaker 工具
+
+在启动 MirrorMaker 工具之前，我们必须准备好刚刚提过的 Consumer 配置文件和 Producer 配置文件。它们的内容分别如下：
+
+```properties
+# consumer.properties
+bootstrap.servers=localhost:9092
+group.id=mirrormaker
+auto.offset.reset=earliest
+```
+
+```properties
+# producer.properties
+bootstrap.servers=localhost:9093
+```
+
+现在，运行命令启动 MirrorMaker 工具。
+
+```sh
+$ bin/kafka-mirror-maker.sh --producer.config ../producer.config --consumer.config ../consumer.config --num.streams 4 --whitelist ".*"
+WARNING: The default partition assignment strategy of the mirror maker will change from 'range' to 'roundrobin' in an upcoming release (so that better load balancing can be achieved). If you prefer to make this switch in advance of that release add the following to the corresponding config: 'partition.assignment.strategy=org.apache.kafka.clients.consumer.RoundRobinAssignor'
+```
+
+这个警告的意思是，在未来版本中，MirrorMaker 内部消费者会使用轮询策略（Round-robin）来为消费者实例分配分区，现阶段使用的默认策略依然是基于范围的分区策略（Range）。Range 策略的思想很朴素，它是将所有分区根据一定的顺序排列在一起，每个消费者依次顺序拿走各个分区。
+
+Round-robin 策略的推出时间要比 Range 策略晚。通常情况下，我们可以认为，社区推出的比较晚的分区分配策略会比之前的策略好。这里的好指的是能实现更均匀的分配效果。该警告信息的最后一部分内容提示我们，*如果我们想提前“享用”轮询策略，需要手动地在 `consumer.properties` 文件中增加 `partition.assignment.strategy` 的设置*。
+
+#### 第 3 步：验证消息是否拷贝成功
+
+启动 MirrorMaker 之后，我们可以向源集群发送并消费一些消息，然后验证是否所有的主题都能正确地同步到目标集群上。
+
+假设我们在源集群上创建了一个 4 分区的主题 test，随后使用 `kafka-producer-perf-test` 脚本模拟发送了 500 万条消息。现在，我们使用下面这两条命令来查询一下，目标 Kafka 集群上是否存在名为 test 的主题，并且成功地镜像了这些消息。
+
+```sh
+$ bin/kafka-run-class.sh kafka.tools.GetOffsetShell --broker-list localhost:9093 --topic test --time -2
+test:0:0
+```
+
+```sh
+$ bin/kafka-run-class.sh kafka.tools.GetOffsetShell --broker-list localhost:9093 --topic test --time -1
+test:0:5000000
+```
+
+-1 和 -2 分别表示获取某分区最新的位移和最早的位移，这两个位移值的差值就是这个分区当前的消息数，在这个例子中，差值是 500 万条。这说明主题 test 当前共写入了 500 万条消息。换句话说，MirrorMaker 已经成功地把这 500 万条消息同步到了目标集群上。
+
+我们明明在源集群创建了一个 4 分区的主题，为什么到了目标集群，就变成单分区了呢？
+
+**MirrorMaker 在执行消息镜像的过程中，如果发现要同步的主题在目标集群上不存在的话，它就会根据 Broker 端参数 `num.partitions` 和 `default.replication.factor` 的默认值，自动将主题创建出来**。在这个例子中，我们在目标集群上没有创建过任何主题，因此，在镜像开始时，MirrorMaker 自动创建了一个名为 test 的单分区单副本的主题。
+
+**在实际使用场景中，推荐提前把要同步的所有主题按照源集群上的规格在目标集群上等价地创建出来**。否则，极有可能出现刚刚的这种情况，这会导致一些很严重的问题。比如原本在某个分区的消息同步到了目标集群以后，却位于其他的分区中。如果你的消息处理逻辑依赖于这样的分区映射，就必然会出现问题。
+
+除了常规的 Kafka 主题之外，MirrorMaker 默认还会同步内部主题，比如在专栏前面我们频繁提到的位移主题。MirrorMaker 在镜像位移主题时，如果发现目标集群尚未创建该主题，它就会根据 Broker 端参数 `offsets.topic.num.partitions` 和 `offsets.topic.replication.factor` 的值来制定该主题的规格。默认配置是 50 个分区，每个分区 3 个副本。
+
+在 0.11.0.0 版本之前，Kafka 不会严格依照 `offsets.topic.replication.factor` 参数的值。这也就是说，如果你设置了该参数值为 3，而当前存活的 Broker 数量少于 3，位移主题依然能被成功创建，只是副本数取该参数值和存活 Broker 数之间的较小值。这个缺陷在 0.11.0.0 版本被修复了，这就意味着，Kafka 会严格遵守你设定的参数值，如果发现存活 Broker 数量小于参数值，就会直接抛出异常，告诉你主题创建失败。因此，在使用 MirrorMaker 时，你一定要确保这些配置都是合理的。
+
+### 其他跨集群镜像方案
+
+MirrorMaker 的主要功能介绍完了。你大致可以感觉到执行 MirrorMaker 的命令是很简单的，而且它提供的功能很有限。实际上，它的运维成本也比较高，比如主题的管理就非常不便捷，同时也很难将其管道化。
+
+业界很多公司选择自己开发跨集群镜像工具
+
+#### Uber 的 uReplicator 工具
+
+Uber 公司之前也是使用 MirrorMaker 的，但是在使用过程中，他们发现了一些明显的缺陷，比如 MirrorMaker 中的消费者使用的是消费者组的机制，这不可避免地会碰到很多 Rebalance 的问题。
+
+为此，Uber 自己研发了 uReplicator。它使用 Apache Helix 作为集中式的主题分区管理组件，并且重写了消费者程序，来替换之前 MirrorMaker 下的消费者，使用 Helix 来管理分区的分配，从而避免了 Rebalance 的各种问题。
+
+另外，Uber 专门写了一篇[博客](https://eng.uber.com/ureplicator-apache-kafka-replicator/)，详细说明了 uReplicator 的设计原理，并罗列了社区的 MirrorMaker 工具的一些缺陷以及 uReplicator 的应对方法。建议读一读这篇博客。
+
+#### LinkedIn 开发的 Brooklin Mirror Maker 工具
+
+针对现有 MirrorMaker 工具不易实现管道化的缺陷，这个工具进行了有针对性的改进，同时也对性能做了一些优化。目前，在 LinkedIn 公司，Brooklin Mirror Maker 已经完全替代了社区版的 MirrorMaker。如果你想深入了解它是如何做到的，我给你推荐一篇[博客](https://www.slideshare.net/jyouping/brooklin-mirror-maker-how-and-why-we-moved-away-from-kafka-mirror-maker)，你可以详细阅读一下。
+
+#### Confluent 公司研发的 Replicator 工具
+
+这个工具提供的是企业级的跨集群镜像方案，是市面上已知的功能最为强大的工具，可以便捷地为你提供 Kafka 主题在不同集群间的迁移。除此之外，Replicator 工具还能自动在目标集群上创建与源集群上配置一模一样的主题，极大地方便了运维管理。不过凡事有利就有弊，Replicator 是要收费的。如果你所在的公司预算充足，而且你们关心数据在多个集群甚至是多个数据中心间的迁移质量，不妨关注一下 Confluent 公司的[Replicator 工具](https://www.confluent.io/product/confluent-platform/global-resilience/)。
+
+## 36 | 你应该怎么监控Kafka
+
+在监控 Kafka 时，如果我们只监控 Broker 的话，就难免以偏概全。单个 Broker 启动的进程虽然属于 Kafka 应用，但它也是一个普通的 Java 进程，更是一个操作系统进程。因此，我觉得有必要从 Kafka 主机、JVM 和 Kafka 集群本身这三个维度进行监控。
+
+### 主机监控
+
+主机级别的监控，往往是揭示线上问题的第一步。**所谓主机监控，指的是监控 Kafka 集群 Broker 所在的节点机器的性能**。通常来说，一台主机上运行着各种各样的应用进程，这些进程共同使用主机上的所有硬件资源，比如 CPU、内存或磁盘等。
+
+常见的主机监控指标包括但不限于以下几种：
+
+- 机器负载（Load）
+- CPU 使用率
+- 内存使用率，包括空闲内存（Free Memory）和已使用内存（Used Memory）
+- 磁盘 I/O 使用率，包括读使用率和写使用率
+- 网络 I/O 使用率
+- TCP 连接数
+- 打开文件数
+- inode 使用情况
+
+重点分享一下机器负载和 CPU 使用率的监控方法。我会以 Linux 平台为例来进行说明，其他平台应该也是类似的。
+
+首先，我们来看一张图片。我在 Kafka 集群的某台 Broker 所在的主机上运行 top 命令，输出的内容如下图所示：
+
+![](images/1059.png)
+
+在图片的右上角，我们可以看到 load average 的 3 个值：4.85，2.76 和 1.26，它们分别代表过去 1 分钟、过去 5 分钟和过去 15 分钟的 Load 平均值。在这个例子中，我的主机总共有 4 个 CPU 核，但 Load 值却达到了 4.85，这就说明，一定有进程暂时“抢不到”任何 CPU 资源。同时，Load 值一直在增加，也说明这台主机上的负载越来越大。
+
+举这个例子，其实我真正想说的是 CPU 使用率。很多人把 top 命令中“%CPU”列的输出值当作 CPU 使用率。比如，在上面这张图中，PID 为 2637 的 Java 进程是 Broker 进程，它对应的“%CPU”的值是 102.3。你不要认为这是 CPU 的真实使用率，这列值的真实含义是进程使用的所有 CPU 的平均使用率，只是 top 命令在显示的时候转换成了单个 CPU。因此，如果是在多核的主机上，这个值就可能会超过 100。在这个例子中，我的主机有 4 个 CPU 核，总 CPU 使用率是 102.3，那么，平均每个 CPU 的使用率大致是 25%。
+
+### JVM 监控
+
+除了主机监控之外，另一个重要的监控维度就是 JVM 监控。Kafka Broker 进程是一个普通的 Java 进程，所有关于 JVM 的监控手段在这里都是适用的。
+
+监控 JVM 进程主要是为了让你全面地了解你的应用程序（Know Your Application）。具体到 Kafka 而言，就是全面了解 Broker 进程。比如，Broker 进程的堆大小（HeapSize）是多少、各自的新生代和老年代是多大？用的是什么 GC 回收器？这些监控指标和配置参数林林总总，通常你都不必全部重点关注，但你至少要搞清楚 Broker 端 JVM 进程的 Minor GC 和 Full GC 的发生频率和时长、活跃对象的总大小和 JVM 上应用线程的大致总数，因为这些数据都是你日后调优 Kafka Broker 的重要依据。
+
+我举个简单的例子。假设一台主机上运行的 Broker 进程在经历了一次 Full GC 之后，堆上存活的活跃对象大小是 700MB，那么在实际场景中，你几乎可以安全地将老年代堆大小设置成该数值的 1.5 倍或 2 倍，即大约 1.4GB。不要小看 700MB 这个数字，它是我们设定 Broker 堆大小的重要依据！
+
+很多人会有这样的疑问：我应该怎么设置 Broker 端的堆大小呢？其实，这就是最合理的评估方法。试想一下，如果你的 Broker 在 Full GC 之后存活了 700MB 的数据，而你设置了堆大小为 16GB，这样合理吗？对一个 16GB 大的堆执行一次 GC 要花多长时间啊？！
+
+**要做到 JVM 进程监控，有 3 个指标需要你时刻关注**：
+
+1. Full GC 发生频率和时长。这个指标帮助你评估 Full GC 对 Broker 进程的影响。长时间的停顿会令 Broker 端抛出各种超时异常。
+2. 活跃对象大小。这个指标是你设定堆大小的重要依据，同时它还能帮助你细粒度地调优 JVM 各个代的堆大小。
+3. 应用线程总数。这个指标帮助你了解 Broker 进程对 CPU 的使用情况。
+
+总之，你对 Broker 进程了解得越透彻，你所做的 JVM 调优就越有效果。
+
+谈到具体的监控，前两个都可以通过 GC 日志来查看。比如，下面的这段 GC 日志就说明了 GC 后堆上的存活对象大小。
+
+```java
+2019-07-30T09:13:03.809+0800: 552.982: [GC cleanup 827M->645M(1024M), 0.0019078 secs]
+```
+
+这个 Broker JVM 进程默认使用了 G1 的 GC 算法，当 cleanup 步骤结束后，堆上活跃对象大小从 827MB 缩减成 645MB。另外，你可以根据前面的时间戳来计算每次 GC 的间隔和频率。
+
+自 **0.9.0.0 版本**起，**社区将默认的 GC 收集器设置为 G1**，而 G1 中的 Full GC 是由单线程执行的，速度非常慢。因此，你一定要监控你的 Broker GC 日志，即以 *`kafkaServer-gc.log`* 开头的文件。注意不要出现 Full GC 的字样。一旦你发现 Broker 进程频繁 Full GC，可以开启 G1 的 `-XX:+PrintAdaptiveSizePolicy` 开关，让 JVM 告诉你到底是谁引发了 Full GC。
+
+### 集群监控
+
+监控 Kafka 集群的几个方法
+
+1. 查看 Broker 进程是否启动，端口是否建立
+
+    千万不要小看这一点。在很多容器化的 Kafka 环境中，比如使用 Docker 启动 Kafka Broker 时，容器虽然成功启动了，但是里面的网络设置如果配置有误，就可能会出现进程已经启动但端口未成功建立监听的情形。因此，你一定要同时检查这两点，确保服务正常运行。
+
+2. 查看 Broker 端关键日志
+
+    这里的关键日志，主要涉及 Broker 端服务器日志 **`server.log`**，控制器日志 *`controller.log`* 以及主题分区状态变更日志 `state-change.log`。其中，server.log 是最重要的，你最好时刻对它保持关注。很多 Broker 端的严重错误都会在这个文件中被展示出来。因此，如果你的 Kafka 集群出现了故障，你要第一时间去查看对应的 server.log，寻找和定位故障原因。
+
+3. 查看 Broker 端关键线程的运行状态
+
+    这些关键线程的意外挂掉，往往无声无息，但是却影响巨大。比方说，Broker 后台有个专属的线程执行 Log Compaction 操作，由于源代码的 Bug，这个线程有时会无缘无故地“死掉”，社区中很多 Jira 都曾报出过这个问题。当这个线程挂掉之后，作为用户的你不会得到任何通知，Kafka 集群依然会正常运转，只是所有的 Compaction 操作都不能继续了，这会导致 Kafka 内部的位移主题所占用的磁盘空间越来越大。因此，我们有必要对这些关键线程的状态进行监控。
+
+    可是，一个 Kafka Broker 进程会启动十几个甚至是几十个线程，我们不可能对每个线程都做到实时监控。所以，我跟你分享一下我认为最重要的两类线程。在实际生产环境中，监控这两类线程的运行情况是非常有必要的。
+
+    - Log Compaction 线程，这类线程是以 `kafka-log-cleaner-thread` 开头的。就像前面提到的，此线程是做日志 Compaction 的。一旦它挂掉了，所有 Compaction 操作都会中断，但用户对此通常是无感知的。
+    - 副本拉取消息的线程，通常以 `ReplicaFetcherThread` 开头。这类线程执行 Follower 副本向 Leader 副本拉取消息的逻辑。如果它们挂掉了，系统会表现为对应的 Follower 副本不再从 Leader 副本拉取消息，因而 Follower 副本的 Lag 会越来越大。
+
+    不论你是使用 jstack 命令，还是其他的监控框架，我建议你时刻关注 Broker 进程中这两类线程的运行状态。一旦发现它们状态有变，就立即查看对应的 Kafka 日志，定位原因，因为这通常都预示会发生较为严重的错误。
+
+4. 查看 Broker 端的关键 JMX 指标
+
+    Kafka 提供了超多的 JMX 指标供用户实时监测，我来介绍几个比较重要的 Broker 端 JMX 指标：
+
+    - BytesIn/BytesOut：即 Broker 端每秒入站和出站字节数。你要确保这组值不要接近你的网络带宽，否则这通常都表示网卡已被“打满”，很容易出现网络丢包的情形。
+    - NetworkProcessorAvgIdlePercent：即网络线程池线程平均的空闲比例。通常来说，你应该确保这个 JMX 值长期大于 30%。如果小于这个值，就表明你的网络线程池非常繁忙，你需要通过增加网络线程数或将负载转移给其他服务器的方式，来给该 Broker 减负。
+    - RequestHandlerAvgIdlePercent：即 I/O 线程池线程平均的空闲比例。同样地，如果该值长期小于 30%，你需要调整 I/O 线程池的数量，或者减少 Broker 端的负载。
+    - UnderReplicatedPartitions：即未充分备份的分区数。所谓未充分备份，是指并非所有的 Follower 副本都和 Leader 副本保持同步。一旦出现了这种情况，通常都表明该分区有可能会出现数据丢失。因此，这是一个非常重要的 JMX 指标。
+    - ISRShrink/ISRExpand：即 ISR 收缩和扩容的频次指标。如果你的环境中出现 ISR 中副本频繁进出的情形，那么这组值一定是很高的。这时，你要诊断下副本频繁进出 ISR 的原因，并采取适当的措施。
+    - ActiveControllerCount：即当前处于激活状态的控制器的数量。正常情况下，Controller 所在 Broker 上的这个 JMX 指标值应该是 1，其他 Broker 上的这个值是 0。如果你发现存在多台 Broker 上该值都是 1 的情况，一定要赶快处理，处理方式主要是查看网络连通性。这种情况通常表明集群出现了脑裂。脑裂问题是非常严重的分布式故障，Kafka 目前依托 ZooKeeper 来防止脑裂。但一旦出现脑裂，Kafka 是无法保证正常工作的。
+
+    其实，Broker 端还有很多很多 JMX 指标，除了上面这些重要指标，你还可以根据自己业务的需要，去官网查看其他 JMX 指标，把它们集成进你的监控框架。
+
+5. 监控 Kafka 客户端
+
+    我们首先要关心的是客户端所在的机器与 Kafka Broker 机器之间的网络往返时延（Round-Trip Time，RTT）。
+
+    对于生产者而言，有一个以 `kafka-producer-network-thread` 开头的线程是你要实时监控的。它是负责实际消息发送的线程。一旦它挂掉了，Producer 将无法正常工作，但你的 Producer 进程不会自动挂掉，因此你有可能感知不到。对于消费者而言，心跳线程事关 Rebalance，也是必须要监控的一个线程。它的名字以 `kafka-coordinator-heartbeat-thread` 开头。
+
+    客户端有一些很重要的 JMX 指标
+
+    从 Producer 角度，你需要关注的 JMX 指标是 request-latency，即消息生产请求的延时。这个 JMX 最直接地表征了 Producer 程序的 TPS；而从 Consumer 角度来说，records-lag 和 records-lead 是两个重要的 JMX 指标。
+
+## 37 | 主流的Kafka监控框架
+
+### JMXTool 工具
+
+首先，我向你推荐 JMXTool 工具。严格来说，它并不是一个框架，只是社区自带的一个工具罢了。JMXTool 工具能够实时查看 Kafka JMX 指标。倘若你一时找不到合适的框架来做监控，JMXTool 可以帮你“临时救急”一下。
+
+Kafka 官网没有 JMXTool 的任何介绍，你需要运行下面的命令，来获取它的使用方法的完整介绍。
+
+```bash
+$ bin/kafka-run-class.sh kafka.tools.JmxTool
+```
+
+JMXTool 工具提供了很多参数，但你不必完全了解所有的参数。我把主要的参数说明列在了下面的表格里，你至少要了解一下这些参数的含义。
+
+<img src="images/1060.png" style="zoom:33%;" />
+
+假设你要查询 Broker 端每秒入站的流量，即所谓的 JMX 指标 BytesInPerSec，这个 JMX 指标能帮助你查看 Broker 端的入站流量负载，如果你发现这个值已经接近了你的网络带宽，这就说明该 Broker 的入站负载过大。你需要降低该 Broker 的负载，或者将一部分负载转移到其他 Broker 上。
+
+下面这条命令，表示每 5 秒查询一次过去 1 分钟的 BytesInPerSec 均值。
+
+```sh
+$ bin/kafka-run-class.sh kafka.tools.JmxTool --object-name kafka.server:type=BrokerTopicMetrics,name=BytesInPerSec --jmx-url service:jmx:rmi:///jndi/rmi://:9997/jmxrmi --date-format "YYYY-MM-dd HH:mm:ss" --attributes OneMinuteRate --reporting-interval 1000
+```
+
+在这条命令中，有几点需要你注意一下。
+
+- 设置 --jmx-url 参数的值时，需要指定 JMX 端口。在这个例子中，端口是 9997，在实际操作中，你需要指定你的环境中的端口。
+
+- 由于我是直接在 Broker 端运行的命令，因此就把主机名忽略掉了。如果你是在其他机器上运行这条命令，你要记得带上要连接的主机名。关于 --object-name 参数值的完整写法，我们可以直接在 Kafka 官网上查询。我们在前面说过，Kafka 提供了超多的 JMX 指标，你需要去官网学习一下它们的用法。我以 ActiveController JMX 指标为例，介绍一下学习的方法。你可以在官网上搜索关键词 ActiveController，找到它对应的 --object-name，即 kafka.controller:type=KafkaController,name=ActiveControllerCount，这样，你就可以执行下面的脚本，来查看当前激活的 Controller 数量。
+
+    ```sh
+    $ bin/kafka-run-class.sh kafka.tools.JmxTool --object-name kafka.controller:type=KafkaController,name=ActiveControllerCount --jmx-url service:jmx:rmi:///jndi/rmi://:9997/jmxrmi --date-format "YYYY-MM-dd HH:mm:ss" --reporting-interval 1000
+    Trying to connect to JMX url: service:jmx:rmi:///jndi/rmi://:9997/jmxrmi.
+    "time","kafka.controller:type=KafkaController,name=ActiveControllerCount:Value"
+    2019-08-05 15:08:30,1
+    2019-08-05 15:08:31,1
+    ```
+
+    总体来说，JMXTool 是社区自带的一个小工具，对于一般简单的监控场景，它还能应付，但是它毕竟功能有限，复杂的监控整体解决方案，还是要依靠监控框架。
+
+### Kafka Manager
+
+Kafka Manager 是雅虎公司于 2015 年开源的一个 Kafka 监控框架。这个框架用 Scala 语言开发而成，主要用于管理和监控 Kafka 集群。
+
+应该说 Kafka Manager 是目前众多 Kafka 监控工具中最好的一个，无论是界面展示内容的丰富程度，还是监控功能的齐全性，它都是首屈一指的。不过，目前该框架的活跃的代码维护者只有三四个人，因此，很多 Bug 或问题都不能及时得到修复，更重要的是，它无法追上 Apache Kafka 版本的更迭速度。
+
+当前，Kafka Manager 最新版是 2.0.0.2。在其 Github 官网上下载 tar.gz 包之后，我们执行解压缩，可以得到 kafka-manager-2.0.0.2 目录。
+
+之后，我们需要运行 sbt 工具来编译 Kafka Manager。sbt 是专门用于构建 Scala 项目的编译构建工具，类似于我们熟知的 Maven 和 Gradle。Kafka Manager 自带了 sbt 命令，我们直接运行它构建项目就可以了：
+
+```sh
+$ ./sbt clean dist
+```
+
+经过漫长的等待之后，你应该可以看到项目已经被成功构建了。你可以在 Kafka Manager 的 target/universal 目录下找到生成的 zip 文件，把它解压，然后修改里面的 conf/application.conf 文件中的 kafka-manager.zkhosts 项，让它指向你环境中的 ZooKeeper 地址，比如：
+
+```properties
+kafka-manager.zkhosts="localhost:2181"
+```
+
+之后，运行以下命令启动 Kafka Manager：
+
+```sh
+$ bin/kafka-manager -Dconfig.file=conf/application.conf -Dhttp.port=8080
+```
+
+该命令指定了要读取的配置文件以及要启动的监听端口。现在，我们打开浏览器，输入对应的 IP:8080，就可以访问 Kafka Manager 了。下面这张图展示了我在 Kafka Manager 中添加集群的主界面。
+
+![](images/1061.png)
+
+注意，要勾选上 Enable JMX Polling，这样你才能监控 Kafka 的各种 JMX 指标。下图就是 Kafka Manager 框架的主界面。
+
+![](images/1062.png)
+
+从这张图中，我们可以发现，Kafka Manager 清晰地列出了当前监控的 Kafka 集群的主题数量、Broker 数量等信息。你可以点击顶部菜单栏的各个条目去探索其他功能。
+
+除了丰富的监控功能之外，Kafka Manager 还提供了很多运维管理操作，比如执行主题的创建、Preferred Leader 选举等。在生产环境中，这可能是一把双刃剑，毕竟这意味着每个访问 Kafka Manager 的人都能执行这些运维操作。这显然是不能被允许的。因此，很多 Kafka Manager 用户都有这样一个诉求：把 Kafka Manager 变成一个纯监控框架，关闭非必要的管理功能。
+
+Kafka Manager 提供了这样的功能。你可以修改 config 下的 application.conf 文件，删除 application.features 中的值。比如，如果我想禁掉 Preferred Leader 选举功能，那么我就可以删除对应 KMPreferredReplicaElectionFeature 项。删除完之后，我们重启 Kafka Manager，再次进入到主界面，我们就可以发现之前的 Preferred Leader Election 菜单项已经没有了。
+
+![](images/1063.png)
+
+总之，作为一款非常强大的 Kafka 开源监控框架，Kafka Manager 提供了丰富的实时监控指标以及适当的管理功能，非常适合一般的 Kafka 集群监控，值得你一试。
+
+### Burrow
+
+我要介绍的第二个 Kafka 开源监控框架是 Burrow。Burrow 是 LinkedIn 开源的一个专门监控消费者进度的框架。事实上，当初其开源时，我对它还是挺期待的。毕竟是 LinkedIn 公司开源的一个框架，而 LinkedIn 公司又是 Kafka 创建并发展壮大的地方。Burrow 应该是有机会成长为很好的 Kafka 监控框架的。
+
+然而令人遗憾的是，它后劲不足，发展非常缓慢，目前已经有几个月没有更新了。而且这个框架是用 Go 写的，安装时要求必须有 Go 运行环境，所以，Burrow 在普及率上不如其他框架。另外，Burrow 没有 UI 界面，只是开放了一些 HTTP Endpoint，这对于“想偷懒”的运维来说，更是一个减分项。如果你要安装 Burrow，必须要先安装 Golang 语言环境，然后依次运行下列命令去安装 Burrow：
+
+```sh
+$ go get github.com/linkedin/Burrow
+$ cd $GOPATH/src/github.com/linkedin/Burrow
+$ dep ensure
+$ go install
+```
+
+等一切准备就绪，执行 Burrow 启动命令就可以了。
+
+```sh
+$GOPATH/bin/Burrow --config-dir /path/containing/config
+```
+
+总体来说，Burrow 目前提供的功能还十分有限，普及率和知名度都是比较低的。不过，它的好处是，该项目的主要贡献者是 LinkedIn 团队维护 Kafka 集群的主要负责人，所以质量是很有保证的。如果你恰好非常熟悉 Go 语言生态，那么不妨试用一下 Burrow。
+
+### JMXTrans + InfluxDB + Grafana
+
+除了刚刚说到的专属开源 Kafka 监控框架之外，其实现在更流行的做法是，在一套通用的监控框架中监控 Kafka，比如使用 JMXTrans + InfluxDB + Grafana 的组合。由于 Grafana 支持对 JMX 指标的监控，因此很容易将 Kafka 各种 JMX 指标集成进来。
+
+我们来看一张生产环境中的监控截图。图中集中了很多监控指标，比如 CPU 使用率、GC 收集数据、内存使用情况等。除此之外，这个仪表盘面板还囊括了很多关键的 Kafka JMX 指标，比如 BytesIn、BytesOut 和每秒消息数等。将这么多数据统一集成进一个面板上直观地呈现出来，是这套框架非常鲜明的特点。
+
+![](images/1064.png)
+
+与 Kafka Manager 相比，这套监控框架的优势在于，你可以在一套监控框架中同时监控企业的多个关键技术组件。特别是对于那些已经搭建了该监控组合的企业来说，直接复用这套框架可以极大地节省运维成本，不失为一个好的选择。
+
+### Confluent Control Center
+
+这是目前已知的最强大的 Kafka 监控框架了。**Control Center 不但能够实时地监控 Kafka 集群，而且还能够帮助你操作和搭建基于 Kafka 的实时流处理应用。更棒的是，Control Center 提供了统一式的主题管理功能。你可以在这里享受到 Kafka 主题和 Schema 的一站式管理服务**。
+
+下面这张图展示了 Control Center 的主题管理主界面。从这张图中，我们可以直观地观测到整个 Kafka 集群的主题数量、ISR 副本数量、各个主题对应的 TPS 等数据。当然，Control Center 提供的功能远不止这些，你能想到的所有 Kafka 运维管理和监控功能，Control Center 几乎都能提供。
+
+![](images/1065.png)
+
+不过，如果你要使用 Control Center，就必须使用 Confluent Kafka Platform 企业版。换句话说，Control Center 不是免费的，你需要付费才能使用。如果你需要一套很强大的监控框架，你可以登录 Confluent 公司官网，去订购这套真正意义上的企业级 Kafka 监控框架。
+
+### Kafka Eagle
+
+值得一提的是，国内最近有个 Kafka Eagle 框架非常不错。它是国人维护的，而且目前还在积极地演进着。根据 Kafka Eagle 官网的描述，它支持最新的 Kafka 2.x 版本，除了提供常规的监控功能之外，还开放了告警功能（Alert），非常值得一试。
+
+## 38 | 调优Kafka，你做到了吗？
+
+### 调优目标
+
+在做调优之前，我们必须明确优化 Kafka 的目标是什么。通常来说，调优是为了满足系统常见的非功能性需求。在众多的非功能性需求中，性能绝对是我们最关心的那一个。不同的系统对性能有不同的诉求，比如对于数据库用户而言，性能意味着请求的响应时间，用户总是希望查询或更新请求能够被更快地处理完并返回。
+
+*对 Kafka 而言，性能一般是指吞吐量和延时*。
+
+吞吐量，也就是 TPS，是指 Broker 端进程或 Client 端应用程序每秒能处理的字节数或消息数，这个值自然是越大越好。
+
+延时和我们刚才说的响应时间类似，它表示从 Producer 端发送消息到 Broker 端持久化完成之间的时间间隔。这个指标也可以代表端到端的延时（End-to-End，E2E），也就是从 Producer 发送消息到 Consumer 成功消费该消息的总时长。和 TPS 相反，我们通常希望延时越短越好。
+
+总之，**高吞吐量、低延时**是我们调优 Kafka 集群的主要目标，一会儿我们会详细讨论如何达成这些目标。在此之前，我想先谈一谈优化漏斗的问题。
+
+### 优化漏斗
+
+优化漏斗是一个调优过程中的分层漏斗，我们可以在每一层上执行相应的优化调整。总体来说，层级越靠上，其调优的效果越明显，整体优化效果是自上而下衰减的，如下图所示：
+
+![](images/1066.png)
+
+1. *应用程序层*。它是指优化 Kafka 客户端应用程序代码。比如，使用合理的数据结构、缓存计算开销大的运算结果，抑或是复用构造成本高的对象实例等。这一层的优化效果最为明显，通常也是比较简单的。
+2. *框架层*。它指的是合理设置 Kafka 集群的各种参数。毕竟，直接修改 Kafka 源码进行调优并不容易，但根据实际场景恰当地配置关键参数的值，还是很容易实现的。
+3. *JVM 层*。Kafka Broker 进程是普通的 JVM 进程，各种对 JVM 的优化在这里也是适用的。优化这一层的效果虽然比不上前两层，但有时也能带来巨大的改善效果。
+4. *操作系统层*。对操作系统层的优化很重要，但效果往往不如想象得那么好。与应用程序层的优化效果相比，它是有很大差距的。
+
+### 基础性调优
+
+#### 操作系统调优
+
+在操作系统层面，你最好在*挂载（Mount）文件系统时禁掉 atime 更新*。
+
+atime 的全称是 access time，记录的是文件最后被访问的时间。记录 atime 需要操作系统访问 inode 资源，而禁掉 atime 可以避免 inode 访问时间的写入操作，减少文件系统的写操作数。你可以执行 **`mount -o noatime`** 命令进行设置。
+
+至于*文件系统，我建议你至少选择 ext4 或 XFS*。尤其是 XFS 文件系统，它具有高性能、高伸缩性等特点，特别适用于生产服务器。
+
+另外就是 *swap 空间的设置*。我个人建议将 swappiness 设置成一个很小的值，比如 1～10 之间，以防止 Linux 的 OOM Killer 开启随意杀掉进程。你可以执行 sudo sysctl vm.swappiness=N 来临时设置该值，如果要永久生效，可以修改 /etc/sysctl.conf 文件，增加 vm.swappiness=N，然后重启机器即可。
+
+操作系统层面还有两个参数也很重要，它们分别是 *ulimit -n 和 vm.max_map_count*。前者如果设置得太小，你会碰到 Too Many File Open 这类的错误，而后者的值如果太小，在一个主题数超多的 Broker 机器上，你会碰到 OutOfMemoryError：Map failed 的严重错误，因此，我建议在生产环境中适当调大此值，比如将其设置为 655360。具体设置方法是修改 /etc/sysctl.conf 文件，增加 vm.max_map_count=655360，保存之后，执行 sysctl -p 命令使它生效。
+
+最后，不得不提的就是*操作系统页缓存大小*了，这对 Kafka 而言至关重要。在某种程度上，我们可以这样说：给 Kafka 预留的页缓存越大越好，最小值至少要容纳一个日志段的大小，也就是 Broker 端参数 `log.segment.bytes` 的值。该参数的默认值是 1GB。预留出一个日志段大小，至少能保证 Kafka 可以将整个日志段全部放入页缓存，这样，消费者程序在消费时能直接命中页缓存，从而避免昂贵的物理磁盘 I/O 操作。
+
+#### JVM 层调优
+
+JVM 层的调优，我们还是要重点关注堆设置以及 GC 方面的性能。
+
+1. **设置堆大小**。如何为 Broker 设置堆大小，这是很多人都感到困惑的问题。我来给出一个朴素的答案：将你的 JVM 堆大小设置成 6～8GB。
+
+    在很多公司的实际环境中，这个大小已经被证明是非常合适的，你可以安心使用。如果你想精确调整的话，我建议你可以查看 GC log，特别是关注 Full GC 之后堆上存活对象的总大小，然后把堆大小设置为该值的 1.5～2 倍。如果你发现 Full GC 没有被执行过，手动运行 jmap -histo:live < pid > 就能人为触发 Full GC。
+
+2. **GC 收集器的选择 G1 收集器**。主要原因是方便省事，至少比 CMS 收集器的优化难度小得多。另外，你一定要尽力避免 Full GC 的出现。其实，不论使用哪种收集器，都要竭力避免 Full GC。在 G1 中，Full GC 是单线程运行的，它真的非常慢。如果你的 Kafka 环境中经常出现 Full GC，你可以配置 JVM 参数 `-XX:+PrintAdaptiveSizePolicy`，来探查一下到底是谁导致的 Full GC。
+
+    使用 G1 还很容易碰到的一个问题，就是大对象（Large Object），反映在 GC 上的错误，就是“too many humongous allocations”。所谓的大对象，一般是指至少占用半个区域（Region）大小的对象。举个例子，如果你的区域尺寸是 2MB，那么超过 1MB 大小的对象就被视为是大对象。要解决这个问题，除了增加堆大小之外，你还可以适当地增加区域大小，设置方法是增加 JVM 启动参数 -XX:+G1HeapRegionSize=N。默认情况下，如果一个对象超过了 N/2，就会被视为大对象，从而直接被分配在大对象区。如果你的 Kafka 环境中的消息体都特别大，就很容易出现这种大对象分配的问题。
+
+#### Broker 端调优
+
+Broker 端调优很重要的一个方面，就是合理地设置 Broker 端参数值，以匹配你的生产环境。不过，后面我们在讨论具体的调优目标时再详细说这部分内容。这里我想先讨论另一个优化手段，即**尽力保持客户端版本和 Broker 端版本一致**。不要小看版本间的不一致问题，它会令 Kafka 丧失很多性能收益，比如 Zero Copy。下面我用一张图来说明一下。![](images/1067.png)
+
+图中蓝色的 Producer、Consumer 和 Broker 的版本是相同的，它们之间的通信可以享受 Zero Copy 的快速通道；相反，一个低版本的 Consumer 程序想要与 Producer、Broker 交互的话，就只能依靠 JVM 堆中转一下，丢掉了快捷通道，就只能走慢速通道了。因此，在优化 Broker 这一层时，你只要保持服务器端和客户端版本的一致，就能获得很多性能收益了。
+
+#### 应用层调优
+
+现在，我们终于来到了漏斗的最顶层。其实，这一层的优化方法各异，毕竟每个应用程序都是不一样的。不过，有一些公共的法则依然是值得我们遵守的。
+
+- **不要频繁地创建 Producer 和 Consumer 对象实例**。构造这些对象的开销很大，尽量复用它们。
+- **用完及时关闭**。这些对象底层会创建很多物理资源，如 Socket 连接、ByteBuffer 缓冲区等。不及时关闭的话，势必造成资源泄露。
+- **合理利用多线程来改善性能**。Kafka 的 Java Producer 是线程安全的，你可以放心地在多个线程中共享同一个实例；而 Java Consumer 虽不是线程安全的
+
+### 性能指标调优
+
+接下来，我会给出调优各个目标的参数配置以及具体的配置原因，希望它们能够帮助你更有针对性地调整你的 Kafka 集群。
+
+#### 调优吞吐量
+
+首先是调优吞吐量。很多人对吞吐量和延时之间的关系似乎有些误解。比如有这样一种提法还挺流行的：假设 Kafka 每发送一条消息需要花费 2ms，那么延时就是 2ms。显然，吞吐量就应该是 500 条 / 秒，因为 1 秒可以发送 1 / 0.002 = 500 条消息。因此，吞吐量和延时的关系可以用公式来表示：TPS = 1000 / Latency(ms)。但实际上，吞吐量和延时的关系远不是这么简单。
+
+我们以 Kafka Producer 为例。假设它以 2ms 的延时来发送消息，如果每次只是发送一条消息，那么 TPS 自然就是 500 条 / 秒。但如果 Producer 不是每次发送一条消息，而是在发送前等待一段时间，然后统一发送一批消息，比如 Producer 每次发送前先等待 8ms，8ms 之后，Producer 共缓存了 1000 条消息，此时总延时就累加到 10ms（即 2ms + 8ms）了，而 TPS 等于 1000 / 0.01 = 100,000 条 / 秒。由此可见，虽然延时增加了 4 倍，但 TPS 却增加了将近 200 倍。这其实也是批次化（batching）或微批次化（micro-batching）目前会很流行的原因。
+
+在实际环境中，用户似乎总是愿意用较小的延时增加的代价，去换取 TPS 的显著提升。毕竟，从 2ms 到 10ms 的延时增加通常是可以忍受的。事实上，Kafka Producer 就是采取了这样的设计思想。
+
+当然，你可能会问：发送一条消息需要 2ms，那么等待 8ms 就能累积 1000 条消息吗？答案是可以的！Producer 累积消息时，一般仅仅是将消息发送到内存中的缓冲区，而发送消息却需要涉及网络 I/O 传输。内存操作和 I/O 操作的时间量级是不同的，前者通常是几百纳秒级别，而后者则是从毫秒到秒级别不等，因此，Producer 等待 8ms 积攒出的消息数，可能远远多于同等时间内 Producer 能够发送的消息数。
+
+怎么调优 TPS 呢？
+
+<img src="images/1068.png" style="zoom:33%;" />
+
+Broker 端参数
+
+Broker 端参数 `num.replica.fetchers` 表示的是 Follower 副本用多少个线程来拉取消息，默认使用 1 个线程。如果你的 Broker 端 CPU 资源很充足，不妨适当调大该参数值，加快 Follower 副本的同步速度。因为在实际生产环境中，**配置了 acks=all 的 Producer 程序吞吐量被拖累的首要因素，就是副本同步性能**。增加这个值后，你通常可以看到 Producer 端程序的吞吐量增加。
+
+另外需要注意的，就是**避免经常性的 Full GC**。目前不论是 CMS 收集器还是 G1 收集器，其 Full GC 采用的是 Stop The World 的单线程收集策略，非常慢，因此一定要避免。
+
+Producer 端
+
+**在 Producer 端，如果要改善吞吐量，通常的标配是增加消息批次的大小以及批次缓存时间，即 `batch.size` 和 `linger.ms`**。目前它们的默认值都偏小，特别是默认的 16KB 的消息批次大小一般都不适用于生产环境。假设你的消息体大小是 1KB，默认一个消息批次也就大约 16 条消息，显然太小了。我们还是希望 Producer 能一次性发送更多的消息。
+
+除了这两个，你最好把**压缩算法**也配置上，以减少网络 I/O 传输量，从而间接提升吞吐量。当前，和 Kafka 适配最好的两个压缩算法是 **LZ4 和 zstd**，不妨一试。
+
+同时，由于我们的优化目标是吞吐量，最好不要设置 acks=all 以及开启重试。前者引入的副本同步时间通常都是吞吐量的瓶颈，而后者在执行过程中也会拉低 Producer 应用的吞吐量。
+
+最后，如果你在多个线程中共享一个 Producer 实例，就可能会碰到**缓冲区不够用**的情形。倘若频繁地遭遇 TimeoutException：Failed to allocate memory within the configured max blocking time 这样的异常，那么你就必须显式地增加 **`buffer.memory`** 参数值，确保缓冲区总是有空间可以申请的。
+
+Consumer 端
+
+Consumer 端提升吞吐量的手段是有限的，你可以利用多线程方案增加整体吞吐量，也可以增加 fetch.min.bytes 参数值。默认是 1 字节，表示只要 Kafka Broker 端积攒了 1 字节的数据，就可以返回给 Consumer 端，这实在是太小了。我们还是让 Broker 端一次性多返回点数据吧。
+
+#### 调优延时
+
+下面是调优延时的参数列表
+
+<img src="images/1069.png" style="zoom:33%;" />
+
+在 Broker 端，我们依然要增加 `num.replica.fetchers` 值以加快 Follower 副本的拉取速度，减少整个消息处理的延时。
+
+在 Producer 端，我们希望消息尽快地被发送出去，因此不要有过多停留，所以必须设置 linger.ms=0，同时不要启用压缩。因为压缩操作本身要消耗 CPU 时间，会增加消息发送的延时。另外，最好不要设置 acks=all。我们刚刚在前面说过，Follower 副本同步往往是降低 Producer 端吞吐量和增加延时的首要原因。
+
+在 Consumer 端，我们保持 `fetch.min.bytes=1` 即可，也就是说，只要 Broker 端有能返回的数据，立即令其返回给 Consumer，缩短 Consumer 消费延时。
+
+
+
+一个线上环境的问题：
+
+该集群上 Consumer 程序一直表现良好，但是某一天，它的性能突然下降，表现为吞吐量显著降低。我在查看磁盘读 I/O 使用率时，发现其明显上升，但之前该 Consumer Lag 很低，消息读取应该都能直接命中页缓存。此时磁盘读突然飙升，我就怀疑有其他程序写入了页缓存。后来经过排查，我发现果然有一个测试 Console Consumer 程序启动，“污染”了部分页缓存（*它读取了比较老的数据，使得新数据被写入磁盘导致的*），导致主业务 Consumer 读取消息不得不走物理磁盘，因此吞吐量下降。找到了真实原因，解决起来就简单多了。
+
+## 39 | 从0搭建基于Kafka的企业级实时日志流处理平台
+
+在任何一个企业中，服务器每天都会产生很多的日志数据。这些数据内容非常丰富，包含了我们的*线上业务数据、用户行为数据以及后端系统数据*。实时分析这些数据，能够帮助我们更快地洞察潜在的趋势，从而有针对性地做出决策。
+
+### 流处理架构
+
+如果在网上搜索实时日志流处理，你应该能够搜到很多教你搭建实时流处理平台做日志分析的教程。这些教程使用的技术栈大多是 Flume+Kafka+Storm、Spark Streaming 或 Flink。特别是 Flume+Kafka+Flink 的组合，逐渐成为了实时日志流处理的标配。不过，要搭建这样的处理平台，你需要用到 3 个框架才能实现，这既增加了系统复杂度，也提高了运维成本。
+
+如何使用 Apache Kafka 这一个框架，实现一套实时日志流处理系统。使用的技术栈是 Kafka Connect+Kafka Core+Kafka Streams 的组合。
+
+下面这张图展示了基于 Kafka 的实时日志流处理平台的流程
+
+![](images/1070.png)
+
+从图中我们可以看到，日志先从 Web 服务器被不断地生产出来，随后被实时送入到 Kafka Connect 组件，Kafka Connect 组件对日志进行处理后，将其灌入 Kafka 的某个主题上，接着发送到 Kafka Streams 组件，进行实时分析。最后，Kafka Streams 将分析结果发送到 Kafka 的另一个主题上。
+
+前面简单介绍过 Kafka Connect 和 Kafka Streams 组件，前者可以实现外部系统与 Kafka 之间的数据交互，而后者可以实时处理 Kafka 主题中的消息。现在，我们就使用这两个组件，结合前面学习的所有 Kafka 知识，一起构建一个实时日志分析平台。
+
+### Kafka Connect 组件
+
+我们先利用 Kafka Connect 组件收集数据。如前所述，Kafka Connect 组件负责连通 Kafka 与外部数据系统。连接外部数据源的组件叫连接器（Connector）。**常见的外部数据源包括数据库、KV 存储、搜索系统或文件系统等**。
+
+今天我们使用**文件连接器（File Connector）**实时读取 Nginx 的 access 日志。假设 access 日志的格式如下：
+
+```sh
+10.10.13.41 - - [13/Aug/2019:03:46:54 +0800] "GET /v1/open/product_list?user_key=****&user_phone=****&screen_height=1125&screen_width=2436&from_page=1&user_type=2&os_type=ios HTTP/1.0" 200 1321
+```
+
+在这段日志里，请求参数中的 os_type 字段目前有两个值：ios 和 android。我们的目标是实时计算当天所有请求中 ios 端和 android 端的请求数。
+
+#### 启动 Kafka Connect
+
+当前，Kafka Connect 支持单机版（Standalone）和集群版（Cluster），我们用集群的方式来启动 Connect 组件。
+
+首先，我们要启动 Kafka 集群，假设 Broker 的连接地址是 localhost:9092。
+
+启动好 Kafka 集群后，我们启动 Connect 组件。在 Kafka 安装目录下有个 config/connect-distributed.properties 文件，你需要修改下列项：
+
+```properties
+# 指定要连接的 Kafka 集群
+bootstrap.servers=localhost:9092
+# 指定 Connect 组件开放的 REST 服务的主机名和端口
+rest.host.name=localhost
+rest.port=8083
+```
+
+运行下面的命令启动 Connect
+
+```sh
+cd kafka_2.12-2.3.0
+bin/connect-distributed.sh config/connect-distributed.properties
+```
+
+如果一切正常，此时 Connect 应该就成功启动了。现在我们在浏览器访问 localhost:8083 的 Connect REST 服务，应该能看到下面的返回内容：
+
+```json
+{"version":"2.3.0","commit":"fc1aaa116b661c8a","kafka_cluster_id":"XbADW3mnTUuQZtJKn9P-hA"}
+```
+
+#### 添加 File Connector
+
+运行下面这条命令来查看一下当前都有哪些 Connector。
+
+```sh
+$ curl http://localhost:8083/connectors
+[]
+```
+
+结果显示，目前我们没有创建任何 Connector。
+
+现在，我们来创建对应的 File Connector。该 Connector 读取指定的文件，并为每一行文本创建一条消息，并发送到特定的 Kafka 主题上。创建命令如下：
+
+```sh
+$ curl -H "Content-Type:application/json" -H "Accept:application/json" http://localhost:8083/connectors -X POST --data '{"name":"file-connector","config":{"connector.class":"org.apache.kafka.connect.file.FileStreamSourceConnector","file":"/var/log/access.log","tasks.max":"1","topic":"access_log"}}'
+> {"name":"file-connector","config":{"connector.class": "org.apache.kafka.connect.file.FileStreamSourceConnector", "file":"/var/log/access.log","tasks.max":"1","topic":"access_log","name":"file-connector"},"tasks":[],"type":"source"}
+```
+
+这条命令本质上是向 Connect REST 服务发送了一个 POST 请求，去创建对应的 Connector。在这个例子中，我们的 Connector 类是 Kafka 默认提供的 FileStreamSourceConnector。我们要读取的日志文件在 /var/log 目录下，要发送到 Kafka 的主题名称为 access_log。
+
+现在，我们再次运行 curl http: // localhost:8083/connectors， 验证一下刚才的 Connector 是否创建成功了。
+
+```sh
+$ curl http://localhost:8083/connectors
+["file-connector"]
+```
+
+显然，名为 file-connector 的新 Connector 已经创建成功了。如果我们现在使用 Console Consumer 程序去读取 access_log 主题的话，应该会发现 access.log 中的日志行数据已经源源不断地向该主题发送了。
+
+如果你的生产环境中有多台机器，操作也很简单，在每台机器上都创建这样一个 Connector，只要保证它们被送入到相同的 Kafka 主题以供消费就行了。
+
+### Kafka Streams 组件
+
+Kafka Streams 是 Kafka 提供的用于实时流处理的组件。
+
+与其他流处理框架不同的是，它仅仅是一个类库，用它编写的应用被编译打包之后就是一个普通的 Java 应用程序。你可以使用任何部署框架来运行 Kafka Streams 应用程序。
+
+只需要简单地启动多个应用程序实例，就能自动地获得负载均衡和故障转移，因此，和 Spark Streaming 或 Flink 这样的框架相比，Kafka Streams 自然有它的优势。
+
+下面这张来自 Kafka 官网的图片，形象地展示了多个 Kafka Streams 应用程序组合在一起，共同实现流处理的场景。图中清晰地展示了 3 个 Kafka Streams 应用程序实例。一方面，它们形成一个组，共同参与并执行流处理逻辑的计算；另一方面，它们又都是独立的实体，彼此之间毫无关联，完全依靠 Kafka Streams 帮助它们发现彼此并进行协作。
+
+![](images/1071.png)
+
+#### 编写流处理应用
+
+要使用 Kafka Streams，你需要在你的 Java 项目中显式地添加 kafka-streams 依赖。我以最新的 2.3 版本为例，分别演示下 Maven 和 Gradle 的配置方法。
+
+Maven:
+
+```xml
+<dependency>
+    <groupId>org.apache.kafka</groupId>
+    <artifactId>kafka-streams</artifactId>
+    <version>2.3.0</version>
+</dependency>
+```
+
+Gradle:
+
+```json
+compile group: 'org.apache.kafka', name: 'kafka-streams', version: '2.3.0'
+```
+
+完整的代码如下：
+
+```java
+package com.geekbang.kafkalearn;
+
+import com.google.gson.Gson;
+import org.apache.kafka.common.serialization.Serdes;
+import org.apache.kafka.streams.KafkaStreams;
+import org.apache.kafka.streams.StreamsBuilder;
+import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.Topology;
+import org.apache.kafka.streams.kstream.KStream;
+import org.apache.kafka.streams.kstream.Produced;
+import org.apache.kafka.streams.kstream.TimeWindows;
+import org.apache.kafka.streams.kstream.WindowedSerdes;
+
+import java.time.Duration;
+import java.util.Properties;
+import java.util.concurrent.CountDownLatch;
+
+public class OSCheckStreaming {
+
+  public static void main(String[] args) {
+    // 负责初始化 Streams 应用程序所需要的关键参数设置
+    Properties props = new Properties();
+    // application.id 是 Streams 程序中非常关键的参数，集群范围内唯一
+    props.put(StreamsConfig.APPLICATION_ID_CONFIG, "os-check-streams");
+    // bootstrap.servers 参数
+    props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+    // 默认的序列化器（Serializer）和解序列化器（Deserializer）
+    props.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass());
+    props.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass());
+    props.put(StreamsConfig.DEFAULT_WINDOWED_KEY_SERDE_INNER_CLASS, Serdes.StringSerde.class.getName());
+
+    final Gson gson = new Gson();
+    // 创建 StreamsBuilder 对象
+    final StreamsBuilder builder = new StreamsBuilder();
+
+    KStream<String, String> source = builder.stream("access_log");
+    source
+      // 将接收到的 JSON 串转换成 LogLine 对象
+      .mapValues(value -> gson.fromJson(value, LogLine.class))
+      // 提取出 LogLine 对象中的 payload 字段
+      .mapValues(LogLine::getPayload)
+      // 进行统计计数
+      .groupBy((key, value) -> value.contains("ios") ? "ios" : "android")
+      // 每 2 秒去计算一下 ios 端和 android 端各自发送的总请求数
+      .windowedBy(TimeWindows.of(Duration.ofSeconds(2L)))
+      // 计数
+      .count()
+      .toStream()
+      // 将这些时间窗口统计数据不断地写入到名为 os-check 的 Kafka 主题中
+      .to("os-check", Produced.with(WindowedSerdes.timeWindowedSerdeFrom(String.class), Serdes.Long()));
+
+    final Topology topology = builder.build();
+    final KafkaStreams streams = new KafkaStreams(topology, props);
+    final CountDownLatch latch = new CountDownLatch(1);
+
+    Runtime.getRuntime().addShutdownHook(new Thread("streams-shutdown-hook") {
+      @Override
+      public void run() {
+        streams.close();
+        latch.countDown();
+      }
+    });
+
+    try {
+      streams.start();
+      latch.await();
+    } catch (Exception e) {
+      System.exit(1);
+    }
+    System.exit(0);
+  }
+}
+
+class LogLine {
+  private String payload;
+  private Object schema;
+
+  public String getPayload() {
+    return payload;
+  }
+}
+```
+
+这段代码会实时读取 access_log 主题，每 2 秒计算一次 ios 端和 android 端请求的总数，并把这些数据写入到 os-check 主题中。
+
+值得注意的是，代码使用的是 Kafka Streams 提供的 **`mapValues`** 方法。顾名思义，这个方法**就是只对消息体（Value）进行转换，而不变更消息的键（Key）**。其实，Kafka Streams 也提供了 map 方法，允许你同时修改消息 Key。通常来说，我们认为 **mapValues 要比 map 方法更高效**，因为 Key 的变更可能导致下游处理算子（Operator）的重分区，降低性能。如果可能的话最好尽量使用 mapValues 方法。
+
+#### 启动流处理应用
+
+由于 Kafka Streams 应用程序就是普通的 Java 应用，你可以用你熟悉的方式对它进行编译、打包和部署。本例中的 OSCheckStreaming.java 就是一个可执行的 Java 类，因此直接运行它即可。如果一切正常，它会将统计数据源源不断地写入到 os-check 主题。
+
+#### 查看统计结果
+
+如果我们想要查看统计的结果，一个简单的方法是使用 Kafka 自带的 kafka-console-consumer 脚本。命令如下：
+
+```sh
+$ bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic os-check --from-beginning --property value.deserializer=org.apache.kafka.common.serialization.LongDeserializer --property print.key=true --property key.deserializer=org.apache.kafka.streams.kstream.TimeWindowedDeserializer --property key.deserializer.default.windowed.key.serde.inner=org.apache.kafka.common.serialization.Serdes\$StringSerde
+[android@1565743788000/9223372036854775807] 1522
+[ios@1565743788000/9223372036854775807] 478
+[ios@1565743790000/9223372036854775807] 1912
+[android@1565743790000/9223372036854775807] 5313
+[ios@1565743792000/9223372036854775807] 780
+[android@1565743792000/9223372036854775807] 1949
+[android@1565743794000/9223372036854775807] 37
+……
+```
+
+由于我们统计的结果是某个时间窗口范围内的，因此承载这个统计结果的消息的 Key 封装了该时间窗口信息，具体格式是：[ios 或 android@开始时间 / 结束时间]，而消息的 Value 就是一个简单的数字，表示这个时间窗口内的总请求数。
+
+## 40 | Kafka Streams与其他流处理平台的差异
+
+### 什么是流处理平台
+
+“[Streaming Systems](https://www.oreilly.com/library/view/streaming-systems/9781491983867/ch01.html)”一书是这么定义“流处理平台”的：**流处理平台（Streaming System）是处理无限数据集（Unbounded Dataset）的数据处理引擎，而流处理是与批处理（Batch Processing）相对应的**。
+
+所谓的无限数据，是指数据永远没有尽头。流处理平台是专门处理这种数据集的系统或框架。当然，这并不是说批处理系统不能处理这种无限数据集，只是通常情况下，它更擅长处理有限数据集（Bounded Dataset）。
+
+那流处理和批处理究竟该如何区分呢？
+
+<img src="images/1072.png" style="zoom:33%;" />
+
+长期以来，流处理给人的印象通常是低延时，但是结果不准确。每来一条消息，它就能计算一次结果，但由于它处理的大多是无界数据，可能永远也不会结束，因此在流处理中，我们很难精确描述结果何时是精确的。理论上，流处理的计算结果会不断地逼近精确结果。但是，它的竞争对手批处理则正好相反。批处理能提供准确的计算结果，但往往延时很高。因此，业界的大神们扬长避短，将两者结合在一起使用。一方面，利用流处理快速地给出不那么精确的结果；另一方面，依托于批处理，最终实现数据一致性。这就是所谓的 **Lambda 架构**。
+
+可以这么说，*目前难以实现正确性是流处理取代批处理的最大障碍*，而实现正确性的基石是精确一次处理语义（Exactly Once Semantics，EOS）。
+
+这里的精确一次是流处理平台能提供的一类一致性保障。常见的一致性保障有三类：
+
+- 至多一次（At most once）语义：消息或事件对应用状态的影响最多只有一次。
+- 至少一次（At least once）语义：消息或事件对应用状态的影响最少一次。
+- 精确一次（Exactly once）语义：消息或事件对应用状态的影响有且只有一次。
+
+注意，我这里说的都是对应用状态的影响。对于很多有副作用（Side Effect）的操作而言，实现精确一次语义几乎是不可能的。举个例子，假设流处理中的某个步骤是发送邮件操作，当邮件发送出去后，倘若后面出现问题要回滚整个流处理流程，已发送的邮件是没法追回的，这就是所谓的副作用。
+
+今天讨论的流处理既包含真正的实时流处理，也包含微批化（Microbatch）的流处理。**所谓的微批化，其实就是重复地执行批处理引擎来实现对无限数据集的处理**。典型的微批化实现平台就是 **Spark Streaming**。
+
+### Kafka Streams 的特色
+
+相比于其他流处理平台，**Kafka Streams 最大的特色就是它不是一个平台，至少它不是一个具备完整功能（Full-Fledged）的平台**，比如其他框架中自带的调度器和资源管理器，就是 Kafka Streams 不提供的。
+
+Kafka 官网明确定义 *Kafka Streams 是一个 Java 客户端库（Client Library）。你可以使用这个库来构建高伸缩性、高弹性、高容错性的分布式应用以及微服务*。
+
+使用 Kafka Streams API 构建的应用就是一个普通的 Java 应用程序。你可以选择任何熟悉的技术或框架对其进行编译、打包、部署和上线。
+
+这是 Kafka Streams 与 Storm、Spark Streaming 或 Flink 最大的区别。
+
+### Kafka Streams 与其他框架的差异
+
+接下来，将从*应用部署、上下游数据源、协调方式和消息语义保障*（Semantic Guarantees）4 个方面，详细分析一下 Kafka Streams 与其他框架的差异。
+
+#### 应用部署
+
+Kafka Streams 应用需要开发人员自行打包和部署，你甚至可以将 Kafka Streams 应用嵌入到其他 Java 应用中。因此，*作为开发者的你，除了要开发代码之外，还要自行管理 Kafka Streams 应用的生命周期*，要么将其打包成独立的 jar 包单独运行，要么将流处理逻辑嵌入到微服务中，开放给其他服务调用。
+
+相反地，其他流处理平台则提供了完整的部署方案。我以 Apache Flink 为例来解释一下。在 Flink 中，流处理应用会被建模成单个的流处理计算逻辑，并封装进 Flink 的作业中。类似地，Spark 中也有作业的概念，而在 Storm 中则叫拓扑（Topology）。作业的生命周期由框架来管理，特别是在 Flink 中，Flink 框架自行负责管理作业，包括作业的部署和更新等。这些都无需应用开发人员干预。
+
+另外，Flink 这类框架都存在*资源管理器*（Resource Manager）的角色。一个作业所需的资源完全由框架层的资源管理器来支持。常见的资源管理器，如 YARN、Kubernetes、Mesos 等，比较新的流处理框架（如 Spark、Flink 等）都是支持的。像 Spark 和 Flink 这样的框架，也支持 Standalone 集群的方式，即不借助于任何已有的资源管理器，完全由集群自己来管理资源。这些都是 Kafka Streams 无法提供的。
+
+因此，从应用部署方面来看，Kafka Streams 更倾向于将部署交给开发人员来做，而不是依赖于框架自己实现。
+
+#### 上下游数据源
+
+简单来说，**Kafka Streams 目前只支持从 Kafka 读数据以及向 Kafka 写数据**。在没有 Kafka Connect 组件的支持下，Kafka Streams 只能读取 Kafka 集群上的主题数据，在完成流处理逻辑后也只能将结果写回到 Kafka 主题上。
+
+反观 Spark Streaming 和 Flink 这类框架，它们都集成了丰富的上下游数据源连接器（Connector），比如常见的连接器 MySQL、ElasticSearch、HBase、HDFS、Kafka 等。如果使用这些框架，你可以很方便地集成这些外部框架，无需二次开发。
+
+当然，由于开发 Connector 通常需要同时掌握流处理框架和外部框架，因此在实际使用过程中，Connector 的质量参差不齐，在具体使用的时候，你可以多查查对应的 [jira 官网](https://www.atlassian.com/)，看看有没有明显的“坑”，然后再决定是否使用
+
+总之，**目前 Kafka Streams 只支持与 Kafka 集群进行交互，它没有提供开箱即用的外部数据源连接器**。
+
+#### 协调方式
+
+在分布式协调方面，Kafka Streams 应用依**赖于 Kafka 集群**提供的协调功能，来**提供高容错性和高伸缩性**。
+
+**Kafka Streams 应用底层使用了消费者组机制来实现任意的流处理扩缩容**。应用的每个实例或节点，本质上都是相同消费者组下的独立消费者，彼此互不影响。它们之间的协调工作，由 Kafka 集群 Broker 上对应的协调者组件来完成。当有实例增加或退出时，协调者自动感知并重新分配负载。
+
+下面一张图展示每个 Kafka Streams 实例内部的构造，从这张图中，我们可以看出，每个实例都由一个消费者实例、特定的流处理逻辑，以及一个生产者实例组成，而这些实例中的消费者实例，共同构成了一个消费者组。
+
+<img src="images/1073.png" style="zoom:33%;" />
+
+通过这个机制，Kafka Streams 应用同时实现了高伸缩性和高容错性，而这一切都是自动提供的，不需要你手动实现。
+
+而像 Flink 这样的框架，它的容错性和扩展性是通过专属的主节点（Master Node）全局来协调控制的。
+
+Flink 支持通过 ZooKeeper 实现主节点的高可用性，避免单点失效：**某个节点出现故障会自动触发恢复操作。这种全局性协调模型对于流处理中的作业而言非常实用，但不太适配单独的流处理应用程序**。原因就在于它不像 Kafka Streams 那样轻量级，应用程序必须要实现特定的 API 来开启检查点机制（checkpointing），同时还需要亲身参与到错误恢复的过程中。
+
+在不同的场景下，Kafka Streams 和 Flink 这种重量级的协调模型各有优劣。
+
+#### 消息语义保障
+
+目前很多流处理框架都宣称它们实现了 EOS，也包括 Kafka Streams 本身。关于精确一次处理语义，有一些地方需要澄清一下。
+
+实际上，当把 Spark、Flink 与 Kafka 结合使用时，如果不使用 Kafka 在 **0.11.0.0 版本**引入的*幂等性 Producer 和事务型 Producer*，这些框架是无法实现端到端的 EOS 的。
+
+因为这些框架与 Kafka 是相互独立的，彼此之间没有任何语义保障机制。但如果使用了事务机制，情况就不同了。这些外部系统利用 Kafka 的事务机制，保障了消息从 Kafka 读取到计算再到写入 Kafka 的全流程 EOS。这就是所谓的端到端精确一次处理语义。
+
+之前 Spark 和 Flink 宣称的 EOS 都是在各自的框架内实现的，无法实现端到端的 EOS。只有使用了 Kafka 的事务机制，它们对应的 Connector 才有可能支持端到端精确一次处理语义。
+
+Spark 官网上明确指出了**用户若要实现与 Kafka 的 EOS，必须自己确保幂等输出和位移保存在同一个事务中。如果你不能自己实现这套机制，那么就要依赖于 Kafka 提供的事务机制来保证**。
+
+而 Flink 在 Kafka 0.11 之前也宣称提供 EOS，不过是有前提条件的，即**每条消息对 Flink 应用状态的影响有且只有一次**。
+
+举个例子，如果你使用 Flink 从 Kafka 读取消息，然后不加任何处理直接写入到 MySQL，那么这个操作就是无状态的，此时 Flink 无法保证端到端的 EOS。
+
+两阶段提交（2-Phase Commit，2PC）机制是一种分布式事务机制，用于实现分布式系统上跨多个节点事务的原子性提交。下面这张图来自于神书“Designing Data-Intensive Applications”中关于 2PC 讲解的章节。它清晰地描述了一次成功 2PC 的过程。在这张图中，两个数据库参与到分布式事务的提交过程中，它们各自做了一些变更，现在需要使用 2PC 来保证两个数据库的变更被原子性地提交。如图所示，2PC 被分为两个阶段：Prepare 阶段和 Commit 阶段。只有完整地执行了这两个阶段，这个分布式事务才算是提交成功。
+
+![](images/1074.png)
+
+分布式系统中的 2PC 常见于数据库内部实现或以 XA 事务的方式供各种异质系统使用。Kafka 也借鉴了 2PC 的思想，在 Kafka 内部实现了基于 2PC 的事务机制。
+
+但是，对于 **Kafka Streams** 而言，情况就不同了。它**天然支持端到端的 EOS，因为它本来就是和 Kafka 紧密相连的**。
+
+下图展示了一个典型的 Kafka Streams 应用的执行逻辑。
+
+<img src="images/1075.png" style="zoom:25%;" />
+
+通常情况下，一个 Kafka Streams 需要执行 5 个步骤：
+
+1. 读取最新处理的消息位移；
+2. 读取消息数据；
+3. 执行处理逻辑；
+4. 将处理结果写回到 Kafka；
+5. 保存位置信息。
+
+这五步的执行必须是原子性的，否则无法实现精确一次处理语义。
+
+在设计上，Kafka Streams 在底层大量使用 Kafka 事务机制和幂等性 Producer 来实现多分区的原子性写入，又因为它只能读写 Kafka，因此 Kafka Streams 很容易地就实现了端到端的 EOS。
+
+总之，虽然 Flink 自 1.4 版本也提供与 Kafka 的 EOS，但从适配性来考量的话，应该说 Kafka Streams 与 Kafka 的适配性是最好的。
+
+## 41 | Kafka Streams DSL开发实例
+
+> DSL，也就是 Domain Specific Language，意思是领域特定语言。它提供了一组便捷的 API 帮助我们实现流式数据处理逻辑。今天，我就来分享一些 Kafka Streams 中的 DSL 开发方法以及具体实例。
+
+### Kafka Streams 背景介绍
+
+所谓的 Kafka Streams 应用，就是调用了 Streams API 的普通 Java 应用程序。只不过在 Kafka Streams 中，流处理逻辑是用拓扑来表征的。
+
+一个拓扑结构本质上是一个有向无环图（DAG），它由多个处理节点（Node）和连接节点的多条边组成，如下图所示：
+
+<img src="images/1076.png" style="zoom:25%;" />
+
+图中的节点也称为处理单元或 Processor，它封装了具体的事件处理逻辑。Processor 在其他流处理平台也被称为操作算子。常见的**操作算子包括转换（map）、过滤（filter）、连接（join）和聚合（aggregation）**等。
+
+大体上，Kafka Streams 开放了两大类 API 供你定义 Processor 逻辑。
+
+
+
+
+
+
 
 
 
