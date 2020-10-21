@@ -80,7 +80,7 @@ Kafka 副本是在分区这个层级定义的。每个分区下可以配置若�
 - 重平衡：Rebalance。消费者组内某个消费者实例挂掉后，其他消费者实例自动重新分配订阅主题分区的过程。
 - Rebalance 是 Kafka 消费者端实现高可用的重要手段。
 
-![](images/1001.png)
+![](images/kafka_hxjsysz/kafka_hxjsysz/1001.png)
 
 ## 03 | Kafka 只是消息引擎系统吗？
 
@@ -393,7 +393,7 @@ $> bin/kafka-server-start.sh config/server.properties
 
 Kafka 有主题（Topic）的概念，它是承载真实数据的逻辑容器，而在主题之下还分为若干个分区，也就是说 Kafka 的消息组织方式实际上是三级结构：主题 - 分区 - 消息。**主题下的每条消息只会保存在某一个分区中**，而不会在多个分区中被保存多份。
 
-![](images/1002.png)
+![](images/kafka_hxjsysz/kafka_hxjsysz/1002.png)
 
 其实分区的作用就是**提供负载均衡的能力**，或者说对数据进行分区的主要原因，就是为了实现系统的**高伸缩性**（Scalability）。
 
@@ -428,7 +428,7 @@ int partition(String topic, Object key, byte[] keyBytes, Object value, byte[] va
 
 比如一个主题下有 3 个分区，那么第一条消息被发送到分区 0，第二条被发送到分区 1，第三条被发送到分区 2，以此类推。当
 
-<img src="images/1003.png" style="zoom: 33%;" />
+<img src="images/kafka_hxjsysz/kafka_hxjsysz/1003.png" style="zoom: 33%;" />
 
 轮询策略是 Kafka Java 生产者 API 默认提供的分区策略。如果你未指定partitioner.class参数，那么你的生产者程序会按照轮询的方式在主题的所有分区间均匀地“码放”消息。
 
@@ -438,7 +438,7 @@ int partition(String topic, Object key, byte[] keyBytes, Object value, byte[] va
 
 也称 Randomness 策略。所谓随机就是我们随意地将消息放置到任意一个分区上，如下面这张图所示。
 
-<img src="images/1004.png" style="zoom:33%;" />
+<img src="images/kafka_hxjsysz/kafka_hxjsysz/1004.png" style="zoom:33%;" />
 
 如果要实现随机策略版的 `partition()` 方法，很简单，只需要两行代码即可：
 
@@ -457,7 +457,7 @@ Kafka 允许为每条消息定义消息键，简称为 Key。
 
 一旦消息被定义了 Key，那么你就可以保证同一个 Key 的所有消息都进入到相同的分区里面，由于**每个分区下的消息处理都是有顺序的**，故这个策略被称为按消息键保序策略，如下图所示。
 
-<img src="images/1005.png" style="zoom:33%;" />
+<img src="images/kafka_hxjsysz/kafka_hxjsysz/1005.png" style="zoom:33%;" />
 
 实现这个策略的 partition 方法同样简单，只需要下面两行代码即可：
 
@@ -495,7 +495,7 @@ Kafka 的消息层次都分为两层：**消息集合**（message set）以及**
 
 V2 版本主要是针对 V1 版本的一些弊端做了修正，其中一个，就是把消息的公共部分抽取出来放到外层消息集合里面，这样就不用每条消息都保存这些信息了。还有一个就是保存压缩消息的方法发生了变化，**V2 版本的做法是对整个消息集合进行压缩**，而不是把多条消息进行压缩然后保存到外层消息的消息体字段中。
 
-![](images/1006.png)
+![](images/kafka_hxjsysz/kafka_hxjsysz/1006.png)
 
 ### 何时压缩？
 
@@ -548,7 +548,7 @@ Producer 使用的是 GZIP 压缩，Broker 使用的是 Snappy 压缩，当Broke
 
 下面这张表是 Facebook Zstandard 官网提供的一份压缩算法 benchmark 比较结果：
 
-![](images/1007.png)
+![](images/kafka_hxjsysz/kafka_hxjsysz/1007.png)
 
 Kafka 中各种压缩算法性能测试结果，即在**吞吐量方面：LZ4 > Snappy > zstd 和 GZIP**；而在**压缩比方面，zstd > LZ4 > GZIP > Snappy**。
 
@@ -584,7 +584,7 @@ Kafka 不可能保证在任何情况下都做到不丢失消息。
 
 Consumer 程序有个“位移”的概念，表示的是这个 Consumer 当前消费到的 Topic 分区的位置。下面这张图来自于官网，它清晰地展示了 Consumer 端的位移数据。这里的“位移”类似于我们看书时使用的书签，它会标记我们当前阅读了多少页。
 
-<img src="images/1008.png" style="zoom: 25%;" />
+<img src="images/kafka_hxjsysz/kafka_hxjsysz/1008.png" style="zoom: 25%;" />
 
 正确使用书签有两个步骤：第一步是读书，第二步是更新书签页。如果这两步的顺序颠倒了，就可能出现这样的场景：当前的书签页是第 90 页，我先将书签放到第 100 页上，之后开始读书。当阅读到第 95 页时，我临时有事中止了阅读。那么问题来了，当我下次直接跳到书签页阅读时，我就丢失了第 96～99 页的内容，即这些消息就丢失了。
 
@@ -917,7 +917,7 @@ Rebalance 发生时，Group 下所有的 Consumer 实例都会协调在一起共
 
 假设目前某个 Consumer Group 下有两个 Consumer，比如 A 和 B，当第三个成员 C 加入时，Kafka 会触发 Rebalance，并根据默认的分配策略重新为 A、B 和 C 分配分区，如下图所示：
 
-<img src="images/1009.png" style="zoom:33%;" />
+<img src="images/kafka_hxjsysz/kafka_hxjsysz/1009.png" style="zoom:33%;" />
 
 显然，Rebalance 之后的分配依然是公平的，即每个 Consumer 实例都获得了 2 个分区的消费权。
 
@@ -994,7 +994,7 @@ Kafka 使用 **Compact 策略**来删除位移主题中的过期消息，避免�
 
 Compact 过程：
 
-![](images/1010.png)
+![](images/kafka_hxjsysz/kafka_hxjsysz/1010.png)
 
 图中位移为 0、2 和 3 的消息的 Key 都是 K1。Compact 之后，分区只需要保存位移为 3 的消息，因为它是最新发送的。
 
@@ -1312,14 +1312,14 @@ while (true) {
 
 <!--当然这也不是绝对的。KafkaConsumer 中有个方法是例外的，wakeup()，你可以在其他线程中安全地调用 KafkaConsumer.wakeup() 来唤醒 Consumer。-->
 
-1. **消费者程序启动多个线程，每个线程维护专属的 KafkaConsumer 实例，负责完整的消息获取、消息处理流程**。如下图所示：![](images/1011.png)
-2. **消费者程序使用单或多线程获取消息，同时创建多个消费线程执行消息处理逻辑。**获取消息的线程可以是一个，也可以是多个，每个线程维护专属的 KafkaConsumer 实例，处理消息则交由 *特定的线程* 池来做，从而实现消息获取与消息处理的真正解耦。架构如下图所示：![](images/1012.png)
+1. **消费者程序启动多个线程，每个线程维护专属的 KafkaConsumer 实例，负责完整的消息获取、消息处理流程**。如下图所示：![](images/kafka_hxjsysz/kafka_hxjsysz/1011.png)
+2. **消费者程序使用单或多线程获取消息，同时创建多个消费线程执行消息处理逻辑。**获取消息的线程可以是一个，也可以是多个，每个线程维护专属的 KafkaConsumer 实例，处理消息则交由 *特定的线程* 池来做，从而实现消息获取与消息处理的真正解耦。架构如下图所示：![](images/kafka_hxjsysz/kafka_hxjsysz/1012.png)
 
 比如一个完整的消费者应用程序要做的事情是 1、2、3、4、5，那么方案 1 的思路是粗粒度化的工作划分，也就是说方案 1 会创建多个线程，每个线程完整地执行 1、2、3、4、5，以实现并行处理的目标，它不会进一步分割具体的子任务；而方案 2 则更细粒度化，它会将 1、2 分割出来，用单线程（也可以是多线程）来做，对于 3、4、5，则用另外的多个线程来做。
 
 两种方案的优缺点
 
-![](images/1013.png)
+![](images/kafka_hxjsysz/kafka_hxjsysz/1013.png)
 
 #### 方案 1
 
@@ -1472,7 +1472,7 @@ Kafka 连接信息就是 < 主机名：端口 > 对，而 group 名称就是你�
 
 例如：
 
-![](images/1014.png)
+![](images/kafka_hxjsysz/kafka_hxjsysz/1014.png)
 
 首先，它会按照消费者组订阅主题的分区进行展示，每个分区一行数据；其次，除了主题、分区等信息外，它会汇报每个分区当前最新生产的消息的位移值（即 LOG-END-OFFSET 列值）、该消费者组当前最新消费消息的位移值（即 CURRENT-OFFSET 值）、LAG 值（前两者的差值）、消费者实例 ID、消费者连接 Broker 的主机名以及消费者的 CLIENT-ID 信息。
 
@@ -1482,7 +1482,7 @@ Kafka 连接信息就是 < 主机名：端口 > 对，而 group 名称就是你�
 
 有的时候，运行这个脚本可能会出现下面这种情况，如下图所示：
 
-![](images/1015.png)
+![](images/kafka_hxjsysz/kafka_hxjsysz/1015.png)
 
 很容易发现它和前面那张图输出的区别，即 CONSUMER-ID、HOST 和 CLIENT-ID 列没有值！如果碰到这种情况，你不用惊慌，这是因为我们运行 kafka-consumer-groups 脚本时没有启动消费者程序。
 
@@ -1558,13 +1558,13 @@ Kafka 的消息是有留存时间设置的，默认是 1 周，也就是说 Kafk
 
 使用 JConsole 工具监控此（**consumer 端的**） JMX 指标图如下：
 
-![](images/1016.png)
+![](images/kafka_hxjsysz/kafka_hxjsysz/1016.png)
 
 从这张图片中，我们可以看到，client-id 为 consumer-1 的消费者在给定的测量周期内最大的 Lag 值为 714202，最小的 Lead 值是 83，这说明此消费者有很大的消费滞后性。
 
 **Kafka 消费者还在分区级别提供了额外的 JMX 指标，用于单独监控分区级别的 Lag 和 Lead 值。**JMX 名称为：`kafka.consumer:type=consumer-fetch-manager-metrics,partition=“{partition}”,topic=“{topic}”,client-id=“{client-id}”`。
 
-![](images/1017.png)
+![](images/kafka_hxjsysz/kafka_hxjsysz/1017.png)
 
 分区级别的 JMX 指标中多了 records-lag-avg 和 records-lead-avg 两个属性，可以计算平均的 Lag 值和 Lead 值。
 
@@ -1590,7 +1590,7 @@ Kafka 的消息是有留存时间设置的，默认是 1 周，也就是说 Kafk
 
 基于领导者的副本机制的工作原理如下图所示：
 
-![](images/1018.png)
+![](images/kafka_hxjsysz/kafka_hxjsysz/1018.png)
 
 说明：
 
@@ -1613,7 +1613,7 @@ Leader 副本天然就在 ISR 中。也就是说，**ISR 不只是追随者副�
 
 先来一起看看下面这张图：
 
-<img src="images/1019.png" style="zoom:33%;" />
+<img src="images/kafka_hxjsysz/kafka_hxjsysz/1019.png" style="zoom:33%;" />
 
 图中有 3 个副本：1 个领导者副本和 2 个追随者副本。Leader 副本当前写入了 10 条消息，Follower1 副本同步了其中的 6 条消息，而 Follower2 副本只同步了其中的 3 条消息。现在，请你思考一下，对于这 2 个追随者副本，你觉得哪个追随者副本与 Leader 不同步？
 
@@ -1674,13 +1674,13 @@ Follower 副本唯一的工作就是不断地从 Leader 副本拉取消息，然
 
 Doug Lea 的 Reactor 模式的架构如下图所示：
 
-![](images/1020.png)
+![](images/kafka_hxjsysz/kafka_hxjsysz/1020.png)
 
 从这张图中，我们可以发现，多个客户端会发送请求给到 Reactor。**Reactor 有个请求分发线程 Dispatcher**，也就是图中的 Acceptor，它会将不同的请求下发到多个工作线程中处理。在这个架构中，**Acceptor 线程只是用于请求分发**，不涉及具体的逻辑处理，非常得轻量级，因此有很高的吞吐量表现。而这些**工作线程可以根据实际业务处理需要任意增减，从而动态调节系统负载能力**。
 
 Kafka Reactor 架构如下图所示：
 
-![](images/1021.png)
+![](images/kafka_hxjsysz/1021.png)
 
 Kafka 的 Broker 端有个 **SocketServer 组件**，类似于 Reactor 模式中的 Dispatcher，它也有对应的 Acceptor 线程和一个工作线程池，只不过在 Kafka 中，这个工作线程池有个专属的名字，叫**网络线程池**。Kafka 提供了 Broker 端参数 `num.network.threads`，用于调整该网络线程池的线程数。其默认值是 3，表示每台 Broker 启动时会创建 3 个网络线程，专门处理客户端发送的请求。
 
@@ -1688,7 +1688,7 @@ Kafka 的 Broker 端有个 **SocketServer 组件**，类似于 Reactor 模式中
 
 当网络线程接收到请求后，它是怎么处理的呢？实际上，Kafka 在这个环节又做了一层异步线程池的处理，我们一起来看一看下面这张图。
 
-<img src="images/1022.png" style="zoom: 33%;" />
+<img src="images/kafka_hxjsysz/1022.png" style="zoom: 33%;" />
 
 **当网络线程拿到请求后，它不是自己处理，而是将请求放入到一个共享请求队列中**。**Broker 端还有个 IO 线程池，负责从该队列中取出请求，执行真正的处理**。如果是 PRODUCE 生产请求，则将消息写入到底层的磁盘日志中；如果是 FETCH 请求，则从磁盘或页缓存中读取消息。
 
@@ -1740,11 +1740,11 @@ Kafka 设计了一套消费者组状态机（State Machine），来帮助协调�
 
 它们分别是：**Empty、Dead、PreparingRebalance、CompletingRebalance 和 Stable**。
 
-![](images/1023.png)
+![](images/kafka_hxjsysz/1023.png)
 
 #### 状态机的各个状态流转
 
-![](images/1024.png)
+![](images/kafka_hxjsysz/1024.png)
 
 **一个消费者组最开始是 Empty 状态，当重平衡过程开启后，它会被置于 PreparingRebalance 状态等待成员加入，之后变更到 CompletingRebalance 状态等待分配方案，最后流转到 Stable 状态完成重平衡。**
 
@@ -1776,13 +1776,13 @@ Removed ✘✘✘ expired offsets in ✘✘✘ milliseconds.
 
 ##### JoinGroup 请求的处理过程：
 
-![](images/1025.png)
+![](images/kafka_hxjsysz/1025.png)
 
 就像前面说的，JoinGroup 请求的主要作用是将组成员订阅信息发送给领导者消费者，待领导者制定好分配方案后，重平衡流程进入到 SyncGroup 请求阶段。
 
 ##### SyncGroup 请求的处理流程：
 
-![](images/1026.png)
+![](images/kafka_hxjsysz/1026.png)
 
 SyncGroup 请求的主要目的，就是让协调者把领导者制定的分配方案下发给各个组内成员。当所有成员都成功接收到分配方案后，消费者组进入到 Stable 状态，即开始正常的消费工作。
 
@@ -1798,25 +1798,25 @@ SyncGroup 请求的主要目的，就是让协调者把领导者制定的分配�
 
 当协调者收到新的 JoinGroup 请求后，它会通过心跳请求响应的方式通知组内现有的所有成员，强制它们开启新一轮的重平衡。具体的过程和之前的客户端重平衡流程是一样的。
 
-![](images/1027.png)
+![](images/kafka_hxjsysz/1027.png)
 
 ###### 组成员主动离组
 
 何谓主动离组？就是指消费者实例所在线程或进程调用 close() 方法主动通知协调者它要退出。这个场景就涉及到了第三类请求：LeaveGroup 请求。
 
-![](images/1028.png)
+![](images/kafka_hxjsysz/1028.png)
 
 ###### 组成员崩溃离组
 
 崩溃离组是指消费者实例出现严重故障，突然宕机导致的离组。它和主动离组是有区别的，因为后者是主动发起的离组，协调者能马上感知并处理。但崩溃离组是被动的，协调者通常需要等待一段时间才能感知到，这段时间一般是由消费者端参数 session.timeout.ms 控制的。也就是说，Kafka 一般不会超过 session.timeout.ms 就能感知到这个崩溃。当然，后面处理崩溃离组的流程与之前是一样的，我们来看看下面这张图。
 
-![](images/1029.png)
+![](images/kafka_hxjsysz/1029.png)
 
 ###### 重平衡时协调者对组内成员提交位移的处理
 
 正常情况下，每个组内成员都会定期汇报位移给协调者。当重平衡开启时，协调者会给予成员一段缓冲时间，要求每个成员必须在这段时间内快速地上报自己的位移信息，然后再开启正常的 JoinGroup/SyncGroup 请求发送。
 
-![](images/1030.png)
+![](images/kafka_hxjsysz/1030.png)
 
 
 
@@ -1836,7 +1836,7 @@ ZooKeeper 赋予客户端监控 znode 变更的能力，即所谓的 Watch 通�
 
 Kafka 在 ZooKeeper 中创建的 znode 分布
 
-<img src="images/1031.png" style="zoom: 25%;" />
+<img src="images/kafka_hxjsysz/1031.png" style="zoom: 25%;" />
 
 ### 控制器是如何被选出来的
 
@@ -1858,7 +1858,7 @@ Broker 在启动时，会尝试去 ZooKeeper 中创建 /controller 节点。Kafk
 
 ### 控制器保存了什么数据
 
-![](images/1032.png)
+![](images/kafka_hxjsysz/1032.png)
 
 几乎把我们能想到的所有 Kafka 集群的数据都囊括进来了。图里面比较重要的数据有：
 
@@ -1876,7 +1876,7 @@ Broker 在启动时，会尝试去 ZooKeeper 中创建 /controller 节点。Kafk
 
 控制器故障转移的过程：
 
-![](images/1033.png)
+![](images/kafka_hxjsysz/1033.png)
 
 最开始时，Broker 0 是控制器。当 Broker 0 宕机后，ZooKeeper 通过 Watch 机制感知到并删除了 /controller 临时节点。之后，所有存活的 Broker 开始竞选新的控制器身份。Broker 3 最终赢得了选举，成功地在 ZooKeeper 上重建了 /controller 节点。之后，Broker 3 会从 ZooKeeper 中读取集群元数据信息，并初始化到自己的缓存中。**重新选出的controller会增加epoch的值，避免旧的controller复活导致出现两个控制器**。
 
@@ -1892,7 +1892,7 @@ Broker 在启动时，会尝试去 ZooKeeper 中创建 /controller 节点。Kafk
 
 社区于 **0.11 版本重构了控制器的底层设计**，最大的改进就是，**把多线程的方案改成了单线程加事件队列的方案**。
 
-![](images/1034.png)
+![](images/kafka_hxjsysz/1034.png)
 
 从这张图中，我们可以看到，社区引入了一个**事件处理线程**，统一处理各种控制器事件，然后控制器将原来执行的操作全部建模成一个个独立的事件，发送到专属的事件队列中，供此线程消费。这就是所谓的**单线程 + 队列**的实现方式。
 
@@ -1937,7 +1937,7 @@ Kafka 的水位不是时间戳，更与时间无关。它是**和位置信息绑
 
 下面这张图展示了多个与高水位相关的 Kafka 术语
 
-![](images/1035.png)
+![](images/kafka_hxjsysz/1035.png)
 
 我们假设这是某个分区 Leader 副本的高水位图。首先，请你注意图中的“已提交消息”和“未提交消息”。在分区高水位以下的消息被认为是已提交消息，反之就是未提交消息。消费者只能消费已提交消息，即图中位移小于 8 的所有消息。注意，这里我们不讨论 Kafka 事务，因为事务机制会影响消费者所能看到的消息的范围，它不只是简单依赖高水位来判断。它依靠一个名为 LSO（Log Stable Offset）的位移值来判断事务型消费者的可见性。**位移值等于高水位的消息也属于未提交消息。也就是说，高水位上的消息是不能被消费者消费的**。
 
@@ -1949,13 +1949,13 @@ Kafka 的水位不是时间戳，更与时间无关。它是**和位置信息绑
 
 每个副本对象都保存了一组高水位值和 LEO 值，但实际上，在 Leader 副本所在的 Broker 上，还保存了其他 Follower 副本的 LEO 值。
 
-![](images/1036.png)
+![](images/kafka_hxjsysz/1036.png)
 
 Broker 0 上保存了某分区的 Leader 副本和所有 Follower 副本的 LEO 值，而 Broker 1 上仅仅保存了该分区的某个 Follower 副本。Kafka 把 Broker 0 上保存的这些 Follower 副本又称为**远程副本（Remote Replica）**。*Kafka 副本机制在运行过程中，会更新 Broker 1 上 Follower 副本的高水位和 LEO 值，同时也会更新 Broker 0 上 Leader 副本的高水位和 LEO I以及所有远程副本的 LEO，但它不会更新远程副本的高水位值，也就是我在图中标记为灰色的部分*。
 
 为什么要在 Broker 0 上保存这些远程副本呢？其实，它们的主要作用是，**帮助 Leader 副本确定其高水位，也就是分区高水位**。
 
-![](images/1037.png)
+![](images/kafka_hxjsysz/1037.png)
 
 与 Leader 副本保持同步，判断的条件有两个
 
@@ -2007,19 +2007,19 @@ Broker 0 上保存了某分区的 Leader 副本和所有 Follower 副本的 LEO 
 
 首先是初始状态。下面这张图中的 remote LEO 就是刚才的远程副本的 LEO 值。在初始状态时，所有值都是 0。
 
-![](images/1038.png)
+![](images/kafka_hxjsysz/1038.png)
 
 当生产者给主题分区发送一条消息后，但写入了本地磁盘，状态变更为：
 
-![](images/1039.png)
+![](images/kafka_hxjsysz/1039.png)
 
 此时，Leader 副本成功将消息写入了本地磁盘，故 LEO 值被更新为 1。Follower 再次尝试从 Leader 拉取消息。和之前不同的是，这次有消息可以拉取了，因此状态进一步变更为：
 
-![](images/1040.png)
+![](images/kafka_hxjsysz/1040.png)
 
 这时，Follower 副本也成功地更新 LEO 为 1。此时，Leader 和 Follower 副本的 LEO 都是 1，但各自的高水位依然是 0，还没有被更新。它们需要在下一轮的拉取中被更新，如下图所示：
 
-![](images/1041.png)
+![](images/kafka_hxjsysz/1041.png)
 
 在新一轮的拉取请求中，由于位移值是 0 的消息已经拉取成功，因此 Follower 副本这次请求拉取的是位移值 =1 的消息。Leader 副本接收到此请求后，更新远程副本 LEO 为 1，然后更新 Leader 高水位为 1。做完这些之后，它会将当前已更新过的高水位值 1 发送给 Follower 副本。Follower 副本接收到以后，也将自己的高水位值更新成 1。至此，一次完整的消息同步周期就结束了。事实上，Kafka 就是利用这样的机制，实现了 Leader 和 Follower 副本之间的同步。
 
@@ -2038,7 +2038,7 @@ Kafka Broker 会在内存中为每个分区都缓存 Leader Epoch 数据，同�
 
 Leader Epoch 是如何防止数据丢失的
 
-<img src="images/1042.png" style="zoom:33%;" />
+<img src="images/kafka_hxjsysz/1042.png" style="zoom:33%;" />
 
 解释一下，单纯依赖高水位是怎么造成数据丢失的。开始时，副本 A 和副本 B 都处于正常状态，A 是 Leader 副本。某个使用了默认 acks 设置的生产者程序向 A 发送了两条消息，A 全部写入成功，此时 Kafka 会通知生产者说两条消息全部发送成功。
 
@@ -2050,7 +2050,7 @@ Leader Epoch 是如何防止数据丢失的
 
 看下如何利用 Leader Epoch 机制来规避这种数据丢失。
 
-<img src="images/1043.png" style="zoom:33%;" />
+<img src="images/kafka_hxjsysz/1043.png" style="zoom:33%;" />
 
 场景和之前大致是类似的，只不过引用 Leader Epoch 机制后，Follower 副本 B 重启回来后，需要向 A 发送一个特殊的请求去获取 Leader 的 LEO 值。在这个例子中，该值为 2。当获知到 Leader LEO=2 后，B 发现该 LEO 值不比它自己的 LEO 值小，而且缓存中也没有保存任何起始位移值 > 2 的 Epoch 条目，因此 B 无需执行任何日志截断操作。这是对高水位机制的一个明显改进，即副本是否执行日志截断不再依赖于高水位进行判断。
 
@@ -2248,7 +2248,7 @@ bin/kafka-console-consumer.sh --bootstrap-server kafka_host:port --topic __consu
 
 首先，Kafka 将动态 Broker 参数保存在 ZooKeeper 中，具体的 znode 路径如下图所示。
 
-![](images/1044.png)
+![](images/kafka_hxjsysz/1044.png)
 
 changes 是用来实时监测动态参数变更的，不会保存参数值；topics 是用来保存 Kafka 主题级别参数的。虽然它们不属于动态 Broker 端参数，但其实它们也是能够动态变更的。
 
@@ -2258,7 +2258,7 @@ users 和 clients 则是用于动态调整客户端配额（Quota）的 znode �
 
 下面这张图片，它展示的是我的一个 Kafka 集群环境上的动态 Broker 端参数。
 
-![](images/1045.png)
+![](images/kafka_hxjsysz/1045.png)
 
 在这张图中，我首先查看了 /config/brokers 下的子节点，我们可以看到，这里面有 < default > 节点和名为 0、1 的子节点。< default > 节点中保存了我设置的 cluster-wide 范围参数；0 和 1 节点中分别保存了我为 Broker 0 和 Broker 1 设置的 per-broker 参数。
 
@@ -2345,9 +2345,9 @@ Configs for broker 1 are:
 
 如果你想要知道动态 Broker 参数都有哪些，一种方式是在 Kafka 官网中查看 Broker 端参数列表，另一种方式是直接运行无参数的 kafka-configs 脚本，该脚本的说明文档会告诉你当前动态 Broker 参数都有哪些。我们可以先来看看下面这两张图。
 
-<img src="images/1046.png" style="zoom:33%;" />
+<img src="images/kafka_hxjsysz/1046.png" style="zoom:33%;" />
 
-<img src="images/1047.png" style="zoom:33%;" />
+<img src="images/kafka_hxjsysz/1047.png" style="zoom:33%;" />
 
 有较大几率被动态调整值的参数
 
@@ -2375,7 +2375,7 @@ Kafka 和传统的消息引擎在设计上是有很大区别的，其中一个�
 
 下面的这张表格罗列了 7 种重设策略。
 
-![](images/1048.png)
+![](images/kafka_hxjsysz/1048.png)
 
 - Earliest 策略表示将位移调整到主题当前最早位移处。这个最早位移不一定就是 0，因为在生产环境中，很久远的消息会被 Kafka 自动删除，所以当前最早位移很可能是一个大于 0 的值。**如果你想要重新消费主题的所有消息，那么可以使用 Earliest 策略**。
 - Latest 策略表示把位移重设成最新末端位移。如果你总共向某个主题发送了 15 条消息，那么最新末端位移就是 15。如果你想跳过所有历史消息，**打算从最新的消息处开始消费的话，可以使用 Latest 策略**。
@@ -2568,13 +2568,13 @@ void seekToEnd(Collection<TopicPartition> partitions);
 
 Kafka 默认提供了很多个命令行脚本，用于实现各种各样的功能和运维管理。以 2.2 版本为例，详细地盘点下这些命令行工具。下图展示了 **2.2 版本提供的所有命令行脚本**。
 
-<img src="images/1049.png" style="zoom:33%;" />
+<img src="images/kafka_hxjsysz/1049.png" style="zoom:33%;" />
 
 从图中我们可以知道，2.2 版本总共提供了 30 个 SHELL 脚本。图中的 windows 实际上是个子目录，里面保存了 Windows 平台下的 BAT 批处理文件。其他的.sh 文件则是 Linux 平台下的标准 SHELL 脚本。
 
 默认情况下，不加任何参数或携带 --help 运行 SHELL 文件，会得到该脚本的使用方法说明。下面这张图片展示了 kafka-log-dirs 脚本的调用方法。
 
-<img src="images/1050.png" style="zoom:33%;" />
+<img src="images/kafka_hxjsysz/1050.png" style="zoom:33%;" />
 
 - connect-standalone 和 connect-distributed 两个脚本。这两个脚本是 Kafka Connect 组件（用于实现 Kafka 与外部世界系统之间的数据传输）的启动脚本。Kafka Connect 支持单节点的 Standalone 模式，也支持多节点的 Distributed 模式。这两个脚本分别是这两种模式下的启动脚本。
 
@@ -2727,7 +2727,7 @@ $ bin/kafka-dump-log.sh --files ../data_dir/kafka_1/test-topic-1/000000000000000
 
 接下来，我们来看如何使用 **`kafka-consumer-groups`** 脚本查看消费者组位移。在上一讲讨论重设消费者组位移的时候，我们使用的也是这个命令。当时我们用的是 `--reset-offsets` 参数，今天我们使用的是 `--describe` 参数。假设我们要查询 Group ID 是 test-group 的消费者的位移，那么命令如图所示：
 
-![](images/1051.png)
+![](images/kafka_hxjsysz/1051.png)
 
 图中的 CURRENT-OFFSET 表示该消费者当前消费的最新位移，LOG-END-OFFSET 表示对应分区最新生产消息的位移，LAG 列是两者的差值。CONSUMER-ID 是 Kafka 消费者程序自动生成的一个 ID。截止到 2.2 版本，你都无法干预这个 ID 的生成过程。如果运行该命令时，这个消费者程序已经终止了，那么此列的值为空。
 
@@ -2785,7 +2785,7 @@ compile group: 'org.apache.kafka', name: 'kafka-clients', version: '2.3.0'
 
 值得一提的是，AdminClient 在内部大量使用生产者 - 消费者模式将请求生成与处理解耦。我在下面这张图中大致描述了它的工作原理。
 
-![](images/1052.png)
+![](images/kafka_hxjsysz/1052.png)
 
 如图所示，前端主线程会创建名为 Call 的请求对象实例。该实例有两个主要的任务
 
@@ -2926,7 +2926,7 @@ SASL 下又细分了很多种认证机制，我们应该如何选择呢？
 
 汇总
 
-![](images/1053.png)
+![](images/kafka_hxjsysz/1053.png)
 
 ### SASL/SCRAM-SHA-256 配置实例
 
@@ -3103,11 +3103,11 @@ $ bin/kafka-console-producer.sh --broker-list localhost:9092,localhost:9093 --to
 
 ACL 模型很简单，它表征的是用户与权限的直接映射关系，如下图所示：
 
-<img src="images/1054.png" style="zoom:33%;" />
+<img src="images/kafka_hxjsysz/1054.png" style="zoom:33%;" />
 
 而 RBAC 模型则加入了角色的概念，支持对用户进行分组，如下图所示：
 
-<img src="images/1055.png" style="zoom:33%;" />
+<img src="images/kafka_hxjsysz/1055.png" style="zoom:33%;" />
 
 Kafka 没有使用 RBAC 模型，它用的是 **ACL 模型**。简单来说，*这种模型就是规定了什么用户对什么资源有什么样的访问权限*。我们可以借用官网的一句话来统一表示这种模型：“Principal P is [Allowed/Denied] Operation O From Host H On Resource R.” 这句话中出现了很多个主体，分别解释下它们的含义。
 
@@ -3166,7 +3166,7 @@ kafka-acls 脚本还有其他的功能，比如删除 ACL、查询已有 ACL 等
 
 下面这张表格，它完整地展示了 Kafka 所有的 ACL 权限。
 
-<img src="images/1056.png" style="zoom:33%;" />
+<img src="images/kafka_hxjsysz/1056.png" style="zoom:33%;" />
 
 看到这么大一张表格，你是不是很惊讶？其实，这恰好证明 Kafka 当前提供的授权机制是非常细粒度的。
 
@@ -3354,13 +3354,13 @@ $ bin/kafka-acls.sh --authorizer-properties zookeeper.connect=localhost:2181 --a
 
 **实现消息或数据从一个集群到另一个集群的拷贝的工具**。从本质上说，MirrorMaker 就是一个消费者 + 生产者的程序。消费者负责从源集群（Source Cluster）消费数据，生产者负责向目标集群（Target Cluster）发送消息。整个镜像流程如下图所示：
 
-![](images/1057.png)
+![](images/kafka_hxjsysz/1057.png)
 
 MirrorMaker 连接的源集群和目标集群，会实时同步消息。当然，你不要认为你只能使用一套 MirrorMaker 来连接上下游集群。事实上，很多用户会部署多套集群，用于实现不同的目的。
 
 我们来看看下面这张图。图中部署了三套集群：左边的源集群负责主要的业务处理；右上角的目标集群可以用于执行数据分析；而右下角的目标集群则充当源集群的热备份。
 
-![](images/1058.png)
+![](images/kafka_hxjsysz/1058.png)
 
 ### 运行 MirrorMaker
 
@@ -3498,7 +3498,7 @@ Uber 公司之前也是使用 MirrorMaker 的，但是在使用过程中，他�
 
 首先，我们来看一张图片。我在 Kafka 集群的某台 Broker 所在的主机上运行 top 命令，输出的内容如下图所示：
 
-![](images/1059.png)
+![](images/kafka_hxjsysz/1059.png)
 
 在图片的右上角，我们可以看到 load average 的 3 个值：4.85，2.76 和 1.26，它们分别代表过去 1 分钟、过去 5 分钟和过去 15 分钟的 Load 平均值。在这个例子中，我的主机总共有 4 个 CPU 核，但 Load 值却达到了 4.85，这就说明，一定有进程暂时“抢不到”任何 CPU 资源。同时，Load 值一直在增加，也说明这台主机上的负载越来越大。
 
@@ -3592,7 +3592,7 @@ $ bin/kafka-run-class.sh kafka.tools.JmxTool
 
 JMXTool 工具提供了很多参数，但你不必完全了解所有的参数。我把主要的参数说明列在了下面的表格里，你至少要了解一下这些参数的含义。
 
-<img src="images/1060.png" style="zoom:33%;" />
+<img src="images/kafka_hxjsysz/1060.png" style="zoom:33%;" />
 
 假设你要查询 Broker 端每秒入站的流量，即所谓的 JMX 指标 BytesInPerSec，这个 JMX 指标能帮助你查看 Broker 端的入站流量负载，如果你发现这个值已经接近了你的网络带宽，这就说明该 Broker 的入站负载过大。你需要降低该 Broker 的负载，或者将一部分负载转移到其他 Broker 上。
 
@@ -3646,11 +3646,11 @@ $ bin/kafka-manager -Dconfig.file=conf/application.conf -Dhttp.port=8080
 
 该命令指定了要读取的配置文件以及要启动的监听端口。现在，我们打开浏览器，输入对应的 IP:8080，就可以访问 Kafka Manager 了。下面这张图展示了我在 Kafka Manager 中添加集群的主界面。
 
-![](images/1061.png)
+![](images/kafka_hxjsysz/1061.png)
 
 注意，要勾选上 Enable JMX Polling，这样你才能监控 Kafka 的各种 JMX 指标。下图就是 Kafka Manager 框架的主界面。
 
-![](images/1062.png)
+![](images/kafka_hxjsysz/1062.png)
 
 从这张图中，我们可以发现，Kafka Manager 清晰地列出了当前监控的 Kafka 集群的主题数量、Broker 数量等信息。你可以点击顶部菜单栏的各个条目去探索其他功能。
 
@@ -3658,7 +3658,7 @@ $ bin/kafka-manager -Dconfig.file=conf/application.conf -Dhttp.port=8080
 
 Kafka Manager 提供了这样的功能。你可以修改 config 下的 application.conf 文件，删除 application.features 中的值。比如，如果我想禁掉 Preferred Leader 选举功能，那么我就可以删除对应 KMPreferredReplicaElectionFeature 项。删除完之后，我们重启 Kafka Manager，再次进入到主界面，我们就可以发现之前的 Preferred Leader Election 菜单项已经没有了。
 
-![](images/1063.png)
+![](images/kafka_hxjsysz/1063.png)
 
 总之，作为一款非常强大的 Kafka 开源监控框架，Kafka Manager 提供了丰富的实时监控指标以及适当的管理功能，非常适合一般的 Kafka 集群监控，值得你一试。
 
@@ -3689,7 +3689,7 @@ $GOPATH/bin/Burrow --config-dir /path/containing/config
 
 我们来看一张生产环境中的监控截图。图中集中了很多监控指标，比如 CPU 使用率、GC 收集数据、内存使用情况等。除此之外，这个仪表盘面板还囊括了很多关键的 Kafka JMX 指标，比如 BytesIn、BytesOut 和每秒消息数等。将这么多数据统一集成进一个面板上直观地呈现出来，是这套框架非常鲜明的特点。
 
-![](images/1064.png)
+![](images/kafka_hxjsysz/1064.png)
 
 与 Kafka Manager 相比，这套监控框架的优势在于，你可以在一套监控框架中同时监控企业的多个关键技术组件。特别是对于那些已经搭建了该监控组合的企业来说，直接复用这套框架可以极大地节省运维成本，不失为一个好的选择。
 
@@ -3699,7 +3699,7 @@ $GOPATH/bin/Burrow --config-dir /path/containing/config
 
 下面这张图展示了 Control Center 的主题管理主界面。从这张图中，我们可以直观地观测到整个 Kafka 集群的主题数量、ISR 副本数量、各个主题对应的 TPS 等数据。当然，Control Center 提供的功能远不止这些，你能想到的所有 Kafka 运维管理和监控功能，Control Center 几乎都能提供。
 
-![](images/1065.png)
+![](images/kafka_hxjsysz/1065.png)
 
 不过，如果你要使用 Control Center，就必须使用 Confluent Kafka Platform 企业版。换句话说，Control Center 不是免费的，你需要付费才能使用。如果你需要一套很强大的监控框架，你可以登录 Confluent 公司官网，去订购这套真正意义上的企业级 Kafka 监控框架。
 
@@ -3725,7 +3725,7 @@ $GOPATH/bin/Burrow --config-dir /path/containing/config
 
 优化漏斗是一个调优过程中的分层漏斗，我们可以在每一层上执行相应的优化调整。总体来说，层级越靠上，其调优的效果越明显，整体优化效果是自上而下衰减的，如下图所示：
 
-![](images/1066.png)
+![](images/kafka_hxjsysz/1066.png)
 
 1. *应用程序层*。它是指优化 Kafka 客户端应用程序代码。比如，使用合理的数据结构、缓存计算开销大的运算结果，抑或是复用构造成本高的对象实例等。这一层的优化效果最为明显，通常也是比较简单的。
 2. *框架层*。它指的是合理设置 Kafka 集群的各种参数。毕竟，直接修改 Kafka 源码进行调优并不容易，但根据实际场景恰当地配置关键参数的值，还是很容易实现的。
@@ -3762,7 +3762,7 @@ JVM 层的调优，我们还是要重点关注堆设置以及 GC 方面的性能
 
 #### Broker 端调优
 
-Broker 端调优很重要的一个方面，就是合理地设置 Broker 端参数值，以匹配你的生产环境。不过，后面我们在讨论具体的调优目标时再详细说这部分内容。这里我想先讨论另一个优化手段，即**尽力保持客户端版本和 Broker 端版本一致**。不要小看版本间的不一致问题，它会令 Kafka 丧失很多性能收益，比如 Zero Copy。下面我用一张图来说明一下。![](images/1067.png)
+Broker 端调优很重要的一个方面，就是合理地设置 Broker 端参数值，以匹配你的生产环境。不过，后面我们在讨论具体的调优目标时再详细说这部分内容。这里我想先讨论另一个优化手段，即**尽力保持客户端版本和 Broker 端版本一致**。不要小看版本间的不一致问题，它会令 Kafka 丧失很多性能收益，比如 Zero Copy。下面我用一张图来说明一下。![](images/kafka_hxjsysz/1067.png)
 
 图中蓝色的 Producer、Consumer 和 Broker 的版本是相同的，它们之间的通信可以享受 Zero Copy 的快速通道；相反，一个低版本的 Consumer 程序想要与 Producer、Broker 交互的话，就只能依靠 JVM 堆中转一下，丢掉了快捷通道，就只能走慢速通道了。因此，在优化 Broker 这一层时，你只要保持服务器端和客户端版本的一致，就能获得很多性能收益了。
 
@@ -3790,7 +3790,7 @@ Broker 端调优很重要的一个方面，就是合理地设置 Broker 端参�
 
 怎么调优 TPS 呢？
 
-<img src="images/1068.png" style="zoom:33%;" />
+<img src="images/kafka_hxjsysz/1068.png" style="zoom:33%;" />
 
 Broker 端参数
 
@@ -3816,7 +3816,7 @@ Consumer 端提升吞吐量的手段是有限的，你可以利用多线程方�
 
 下面是调优延时的参数列表
 
-<img src="images/1069.png" style="zoom:33%;" />
+<img src="images/kafka_hxjsysz/1069.png" style="zoom:33%;" />
 
 在 Broker 端，我们依然要增加 `num.replica.fetchers` 值以加快 Follower 副本的拉取速度，减少整个消息处理的延时。
 
@@ -3842,7 +3842,7 @@ Consumer 端提升吞吐量的手段是有限的，你可以利用多线程方�
 
 下面这张图展示了基于 Kafka 的实时日志流处理平台的流程
 
-![](images/1070.png)
+![](images/kafka_hxjsysz/1070.png)
 
 从图中我们可以看到，日志先从 Web 服务器被不断地生产出来，随后被实时送入到 Kafka Connect 组件，Kafka Connect 组件对日志进行处理后，将其灌入 Kafka 的某个主题上，接着发送到 Kafka Streams 组件，进行实时分析。最后，Kafka Streams 将分析结果发送到 Kafka 的另一个主题上。
 
@@ -3930,7 +3930,7 @@ Kafka Streams 是 Kafka 提供的用于实时流处理的组件。
 
 下面这张来自 Kafka 官网的图片，形象地展示了多个 Kafka Streams 应用程序组合在一起，共同实现流处理的场景。图中清晰地展示了 3 个 Kafka Streams 应用程序实例。一方面，它们形成一个组，共同参与并执行流处理逻辑的计算；另一方面，它们又都是独立的实体，彼此之间毫无关联，完全依靠 Kafka Streams 帮助它们发现彼此并进行协作。
 
-![](images/1071.png)
+![](images/kafka_hxjsysz/1071.png)
 
 #### 编写流处理应用
 
@@ -4074,7 +4074,7 @@ $ bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic os-che
 
 那流处理和批处理究竟该如何区分呢？
 
-<img src="images/1072.png" style="zoom:33%;" />
+<img src="images/kafka_hxjsysz/1072.png" style="zoom:33%;" />
 
 长期以来，流处理给人的印象通常是低延时，但是结果不准确。每来一条消息，它就能计算一次结果，但由于它处理的大多是无界数据，可能永远也不会结束，因此在流处理中，我们很难精确描述结果何时是精确的。理论上，流处理的计算结果会不断地逼近精确结果。但是，它的竞争对手批处理则正好相反。批处理能提供准确的计算结果，但往往延时很高。因此，业界的大神们扬长避短，将两者结合在一起使用。一方面，利用流处理快速地给出不那么精确的结果；另一方面，依托于批处理，最终实现数据一致性。这就是所谓的 **Lambda 架构**。
 
@@ -4132,7 +4132,7 @@ Kafka Streams 应用需要开发人员自行打包和部署，你甚至可以将
 
 下面一张图展示每个 Kafka Streams 实例内部的构造，从这张图中，我们可以看出，每个实例都由一个消费者实例、特定的流处理逻辑，以及一个生产者实例组成，而这些实例中的消费者实例，共同构成了一个消费者组。
 
-<img src="images/1073.png" style="zoom:33%;" />
+<img src="images/kafka_hxjsysz/1073.png" style="zoom:33%;" />
 
 通过这个机制，Kafka Streams 应用同时实现了高伸缩性和高容错性，而这一切都是自动提供的，不需要你手动实现。
 
@@ -4160,7 +4160,7 @@ Spark 官网上明确指出了**用户若要实现与 Kafka 的 EOS，必须自�
 
 两阶段提交（2-Phase Commit，2PC）机制是一种分布式事务机制，用于实现分布式系统上跨多个节点事务的原子性提交。下面这张图来自于神书“Designing Data-Intensive Applications”中关于 2PC 讲解的章节。它清晰地描述了一次成功 2PC 的过程。在这张图中，两个数据库参与到分布式事务的提交过程中，它们各自做了一些变更，现在需要使用 2PC 来保证两个数据库的变更被原子性地提交。如图所示，2PC 被分为两个阶段：Prepare 阶段和 Commit 阶段。只有完整地执行了这两个阶段，这个分布式事务才算是提交成功。
 
-![](images/1074.png)
+![](images/kafka_hxjsysz/1074.png)
 
 分布式系统中的 2PC 常见于数据库内部实现或以 XA 事务的方式供各种异质系统使用。Kafka 也借鉴了 2PC 的思想，在 Kafka 内部实现了基于 2PC 的事务机制。
 
@@ -4168,7 +4168,7 @@ Spark 官网上明确指出了**用户若要实现与 Kafka 的 EOS，必须自�
 
 下图展示了一个典型的 Kafka Streams 应用的执行逻辑。
 
-<img src="images/1075.png" style="zoom:25%;" />
+<img src="images/kafka_hxjsysz/1075.png" style="zoom:25%;" />
 
 通常情况下，一个 Kafka Streams 需要执行 5 个步骤：
 
@@ -4194,7 +4194,7 @@ Spark 官网上明确指出了**用户若要实现与 Kafka 的 EOS，必须自�
 
 一个拓扑结构本质上是一个有向无环图（DAG），它由多个处理节点（Node）和连接节点的多条边组成，如下图所示：
 
-<img src="images/1076.png" style="zoom:25%;" />
+<img src="images/kafka_hxjsysz/1076.png" style="zoom:25%;" />
 
 图中的节点也称为处理单元或 Processor，它封装了具体的事件处理逻辑。Processor 在其他流处理平台也被称为操作算子。常见的**操作算子包括转换（map）、过滤（filter）、连接（join）和聚合（aggregation）**等。
 
@@ -4218,7 +4218,7 @@ Spark 官网上明确指出了**用户若要实现与 Kafka 的 EOS，必须自�
 
 下面这张图展示了表转换成流，流再转换成表的全过程。
 
-<img src="images/1077.png" style="zoom:33%;" />
+<img src="images/kafka_hxjsysz/1077.png" style="zoom:33%;" />
 
 流和表的概念在流处理领域非常关键。在 Kafka Streams DSL 中，流用 `KStream` 表示，而表用 `KTable` 表示。
 
@@ -4230,7 +4230,7 @@ Kafka Streams 还定义了 `GlobalKTable`。本质上它和 KTable 都表征了�
 
 常见的时间概念有两类：**事件发生时间**（Event Time）和事**件处理时间**（Processing Time）。理想情况下，我们希望这两个时间相等，即事件一旦发生就马上被处理，但在实际场景中，这是不可能的，**Processing Time 永远滞后于 Event Time**，而且滞后程度又是一个高度变化，无法预知，就像“Streaming Systems”一书中的这张图片所展示的那样：
 
-<img src="images/1078.png" style="zoom:25%;" />
+<img src="images/kafka_hxjsysz/1078.png" style="zoom:25%;" />
 
 该图中的 45°虚线刻画的是理想状态，即 Event Time 等于 Processing Time，而粉色的曲线表征的是真实情况，即 Processing Time 落后于 Event Time，而且落后的程度（Lag）不断变化，毫无规律。
 
@@ -4639,7 +4639,7 @@ $ ./gradlew idea  #如果你用的是Eclipse，执行./gradlew eclipse即可
 
 至此，我们就在 IDEA 中搭建了 Kafka 源码环境。你可以打开 Kafka.scala 文件，右键选择“运行”，这时，你应该可以看到启动 Kafka Broker 的命令行用法说明，如下图所示：
 
-<img src="images/1079.png" style="zoom:25%;" />
+<img src="images/kafka_hxjsysz/1079.png" style="zoom:25%;" />
 
 总体来说，Kafka 工程自从由使用 sbt 改为使用 Gradle 管理之后，整个项目的编译和构建变得简单多了，只需要 3、4 条命令就能在本机环境中搭建测试开发环境了。
 
@@ -4647,7 +4647,7 @@ $ ./gradlew idea  #如果你用的是Eclipse，执行./gradlew eclipse即可
 
 下图是 IDEA 上 Kafka 工程的完整目录列表。
 
-<img src="images/1080.png" style="zoom:25%;" />
+<img src="images/kafka_hxjsysz/1080.png" style="zoom:25%;" />
 
 在这张图中，有几个子目录需要你重点关注一下。
 
@@ -4669,7 +4669,7 @@ Kafka 源码有 50 万行之多，没有重点地进行通读，效率会特别�
 
 从总体流程上看，Broker 端顶部的入口类是 KafkaApis.scala。这个类是处理所有入站请求的总入口，下图展示了部分请求的处理方法：
 
-<img src="images/1081.png" style="zoom: 50%;" />
+<img src="images/kafka_hxjsysz/1081.png" style="zoom: 50%;" />
 
 你可以进到不同的方法里面去看实际的请求处理逻辑。比如 handleProduceRequest 方法是处理 Producer 生产消息请求的，而 handleFetchRequest 方法则是处理消息读取请求的。
 
