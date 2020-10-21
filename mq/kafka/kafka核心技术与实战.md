@@ -4200,25 +4200,539 @@ Spark 官网上明确指出了**用户若要实现与 Kafka 的 EOS，必须自�
 
 大体上，Kafka Streams 开放了两大类 API 供你定义 Processor 逻辑。
 
+第 1 类就是我刚刚提到的 DSL，它是声明式的函数式 API，使用起来感觉和 SQL 类似，你不用操心它的底层是怎么实现的，你只需要调用特定的 API 告诉 Kafka Streams 你要做什么即可。
+
+第 2 类则是命令式的低阶 API，称为 Processor API。比起 DSL，这组 API 提供的实现方式更加灵活。你可以编写自定义的算子来实现一些 DSL 天然没有提供的处理逻辑。事实上，DSL 底层也是用 Processor API 实现的。
+
+**不论是用哪组 API 实现，所有流处理应用本质上都可以分为两类：有状态的（Stateful）应用和无状态的（Stateless）应用**。
+
+有状态的应用指的是应用中使用了类似于连接、聚合或时间窗口（Window）的 API。一旦调用了这些 API，你的应用就变为有状态的了，也就是说你需要让 Kafka Streams 帮你保存应用的状态。
+
+无状态的应用是指在这类应用中，某条消息的处理结果不会影响或依赖其他消息的处理。常见的无状态操作包括事件转换以及刚刚那个例子中的过滤等。
+
+### 关键概念
+
+#### 流表二元性
+
+流就是一个永不停止（至少理论上是这样的）的事件序列，而表和关系型数据库中的概念类似，是一组行记录。在流处理领域，两者是有机统一的：**流在时间维度上聚合之后形成表，表在时间维度上不断更新形成流，这就是所谓的流表二元性（Duality of Streams and Tables）**。流表二元性在流处理领域内的应用是 Kafka 框架赖以成功的重要原因之一。
+
+下面这张图展示了表转换成流，流再转换成表的全过程。
+
+<img src="images/1077.png" style="zoom:33%;" />
+
+流和表的概念在流处理领域非常关键。在 Kafka Streams DSL 中，流用 `KStream` 表示，而表用 `KTable` 表示。
+
+Kafka Streams 还定义了 `GlobalKTable`。本质上它和 KTable 都表征了一个表，里面封装了事件变更流，但是它和 KTable 的最大不同在于，当 Streams 应用程序读取 Kafka 主题数据到 GlobalKTable 时，它会读取主题*所有分区的数据*，而对 KTable 而言，Streams 程序实例只会*读取部分分区的数据*，这主要取决于 Streams 实例的数量。
+
+#### 时间
+
+在流处理领域内，精确定义事件时间是非常关键的：一方面，它是决定流处理应用能否实现正确性的前提；另一方面，流处理中时间窗口等操作依赖于时间概念才能正常工作。
+
+常见的时间概念有两类：**事件发生时间**（Event Time）和事**件处理时间**（Processing Time）。理想情况下，我们希望这两个时间相等，即事件一旦发生就马上被处理，但在实际场景中，这是不可能的，**Processing Time 永远滞后于 Event Time**，而且滞后程度又是一个高度变化，无法预知，就像“Streaming Systems”一书中的这张图片所展示的那样：
+
+<img src="images/1078.png" style="zoom:25%;" />
+
+该图中的 45°虚线刻画的是理想状态，即 Event Time 等于 Processing Time，而粉色的曲线表征的是真实情况，即 Processing Time 落后于 Event Time，而且落后的程度（Lag）不断变化，毫无规律。
+
+#### 时间窗口
+
+所谓的时间窗口机制，就是将流数据沿着时间线切分的过程。常见的时间窗口包括：固定时间窗口（Fixed Windows）、滑动时间窗口（Sliding Windows）和会话窗口（Session Windows）。Kafka Streams 同时支持这三类时间窗口。在后面的例子中，会详细介绍如何使用 Kafka Streams API 实现时间窗口功能。
+
+### 运行 WordCount 实例
+
+每个大数据处理框架第一个要实现的程序基本上都是单词计数（WordCount 程序）。我们来看下 Kafka Streams DSL 如何实现 WordCount。我先给出完整代码，稍后我会详细介绍关键部分代码的含义以及运行它的方法。
+
+```java
+
+package kafkalearn.demo.wordcount;
+
+
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.common.serialization.Serdes;
+import org.apache.kafka.streams.KafkaStreams;
+import org.apache.kafka.streams.StreamsBuilder;
+import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.kstream.KStream;
+import org.apache.kafka.streams.kstream.KTable;
+import org.apache.kafka.streams.kstream.Produced;
+
+
+import java.util.Arrays;
+import java.util.Locale;
+import java.util.Properties;
+import java.util.concurrent.CountDownLatch;
+
+
+public final class WordCountDemo {
+  public static void main(final String[] args) {
+    // 配置 Kafka Streams 程序的关键参数
+    final Properties props = new Properties();
+    // 必须显式地指定，Kafka Streams 应用的唯一标识
+    props.put(StreamsConfig.APPLICATION_ID_CONFIG, "wordcount-stream-demo");
+    props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+    props.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass().getName());
+    props.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass().getName());
+    props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+
+    // 构造了 StreamsBuilder 对象，并创建了一个 KStream
+    final StreamsBuilder builder = new StreamsBuilder();
+    final KStream<String, String> source = builder.stream("wordcount-input-topic");
+    // 提取消息中的单词
+    final KTable<String, Long> counts = source
+      .flatMapValues(value -> Arrays.asList(value.toLowerCase(Locale.getDefault()).split(" ")))
+      .groupBy((key, value) -> value)
+      .count();
+
+    counts.toStream().to("wordcount-output-topic", Produced.with(Serdes.String(), Serdes.Long()));
+
+    final KafkaStreams streams = new KafkaStreams(builder.build(), props);
+    final CountDownLatch latch = new CountDownLatch(1);
+
+    Runtime.getRuntime().addShutdownHook(new Thread("wordcount-stream-demo-jvm-hook") {
+      @Override
+      public void run() {
+        streams.close();
+        latch.countDown();
+      }
+    });
+
+    try {
+      streams.start();
+      latch.await();
+    } catch (final Throwable e) {
+      System.exit(1);
+    }
+    System.exit(0)
+  }
+}
+```
+
+总体来说，Kafka Streams DSL 实现 WordCount 的方式还是很简单的，仅仅调用几个操作算子就轻松地实现了分布式的单词计数实时处理功能。事实上，现在主流的实时流处理框架越来越倾向于这样的设计思路，即通过提供丰富而便捷的开箱即用操作算子，简化用户的开发成本，采用类似于搭积木的方式快捷地构建实时计算应用。
+
+待启动该 Java 程序之后，你需要创建出对应的输入和输出主题，并向输入主题不断地写入符合刚才所说的格式的单词行，之后，你需要运行下面的命令去查看输出主题中是否正确地统计了你刚才输入的单词个数：
+
+```sh
+bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 \
+    --topic wordcount-output-topic \
+    --from-beginning \
+    --formatter kafka.tools.DefaultMessageFormatter \
+    --property print.key=true \
+    --property print.value=true \
+    --property key.deserializer=org.apache.kafka.common.serialization.StringDeserializer \
+    --property value.deserializer=org.apache.kafka.common.serialization.LongDeserializer
+```
+
+### 开发 API
+
+#### 常见操作算子
+
+操作算子的丰富程度和易用性是衡量流处理框架受欢迎程度的重要依据之一。Kafka Streams DSL 提供了很多开箱即用的操作算子，大体上分为两大类：**无状态算子和有状态算子**。
+
+无状态算子
+
+*在无状态算子中，filter 的出场率是极高的*。它执行的就是过滤的逻辑。依然拿 WordCount 为例，假设我们只想统计那些以字母 s 开头的单词的个数，我们可以在执行完 flatMapValues 后增加一行代码，代码如下：
+
+```java
+.filter(((key, value) -> value.startsWith("s")))
+```
+
+*另一个常见的无状态算子当属 map 一族了*。Streams DSL 提供了很多变体，比如 map、mapValues、flatMap 和 flatMapValues。我们已经见识了 flatMapValues 的威力，其他三个的功能也是类似的，只是所有带 Values 的变体都只对消息体执行转换，不触及消息的 Key，而不带 Values 的变体则能修改消息的 Key。
+
+举个例子，假设当前消息没有 Key，而 Value 是单词本身，现在我们想要将消息变更成这样的 KV 对，即 Key 是单词小写，而 Value 是单词长度，那么我们可以调用 map 方法，代码如下：
+
+```java
+KStream<String, Integer> transformed = stream.map(
+    (key, value) -> KeyValue.pair(value.toLowerCase(), value.length()));
+```
+
+最后，我再介绍一组调试用的无状态算子：*print 和 peek*。Streams DSL 支持你使用这两个方法查看你的消息流中的事件。这两者的区别在于，print 是终止操作，一旦你调用了 print 方法，后面就不能再调用任何其他方法了，而 peek 则允许你在查看消息流的同时，依然能够继续对其进行处理，比如下面这两段代码所示：
+
+```java
+stream.print(Printed.toFile("streams.out").withLabel("debug"));
+
+stream.peek((key, value) -> System.out.println("key=" + key + ", value=" + value)).map(...);
+```
+
+有状态操作算子
+
+常见的有状态操作算子主要涉及聚合（Aggregation）方面的操作，比如计数、求和、求平均值、求最大最小值等。Streams DSL 目前只提供了 count 方法用于计数，其他的聚合操作需要你自行使用 API 实现。
+
+假设我们有个消息流，每条事件就是一个单独的整数，现在我们想要对其中的偶数进行求和，那么 Streams DSL 中的实现方法如下：
+
+```java
+final KTable<Integer, Integer> sumOfEvenNumbers = input
+         .filter((k, v) -> v % 2 == 0)
+         .selectKey((k, v) -> 1)
+         .groupByKey()
+         .reduce((v1, v2) -> v1 + v2);
+```
+
+我简单解释一下 selectKey 调用。由于我们要对所有事件中的偶数进行求和，因此需要把这些消息的 Key 都调整成相同的值，因此这里我使用 selectKey 指定了一个 Dummy Key 值，即上面这段代码中的数值 1。它没有任何含义，仅仅是让所有消息都赋值上这个 Key 而已。真正核心的代码在于 reduce 调用，它是执行求和的关键逻辑。
+
+#### 时间窗口实例
+
+Streams DSL 支持 3 类时间窗口。前两类窗口通过 `TimeWindows.of` 方法来实现，会话窗口通过 `SessionWindows.with` 来实现。
+
+假设在刚才的 WordCount 实例中，我们想每一分钟统计一次单词计数，那么需要在调用 count 之前增加下面这行代码：
+
+```java
+.windowedBy(TimeWindows.of(Duration.ofMinutes(1)))
+```
+
+同时，你还需要修改 counts 的类型，此时它不再是 KTable 了，而变成了 KTable，因为引入了时间窗口，所以，事件的 Key 也必须要携带时间窗口的信息。除了这两点变化，WordCount 其他部分代码都不需要修改。
+
+## 42 | Kafka Streams在金融领域的应用
+
+背景：如何利用大数据技术，特别是 Kafka Streams 实时计算框架，来帮助我们更好地做企业用户洞察。
+
+众所周知，金融领域内的获客成本是相当高的，一线城市高净值白领的获客成本通常可达上千元。面对如此巨大的成本压力，金融企业一方面要降低广告投放的获客成本，另一方面要做好精细化运营，实现客户生命周期内价值（Custom Lifecycle Value, CLV）的最大化。
+
+**实现价值最大化的一个重要途径就是做好用户洞察，而用户洞察要求你要更深度地了解你的客户，即所谓的 Know Your Customer（KYC）**，真正做到以客户为中心，不断地满足客户需求。
+
+为了实现 KYC，传统的做法是花费大量的时间与客户见面，做面对面的沟通以了解客户的情况。但是，用这种方式得到的数据往往是不真实的，毕竟客户内心是有潜在的自我保护意识的，短时间内的面对面交流很难真正洞察到客户的真实诉求。
+
+相反地，渗透到每个人日常生活方方面面的大数据信息则代表了客户的实际需求。比如客户经常浏览哪些网站、都买过什么东西、最喜欢的视频类型是什么。这些数据看似很随意，但都表征了客户最真实的想法。将这些数据汇总在一起，我们就能完整地构造出客户的画像，这就是所谓的**用户画像（User Profile）**技术。
+
+### 用户画像
+
+用户画像听起来很玄妙，但实际上你应该是很熟悉的。你的很多基本信息，比如性别、年龄、所属行业、工资收入和爱好等，都是用户画像的一部分。
+
+举个例子，我们可以这样描述一个人：某某某，男性，28 岁，未婚，工资水平大致在 15000 到 20000 元之间，是一名大数据开发工程师，居住在北京天通苑小区，平时加班很多，喜欢动漫或游戏。
+
+其实，这一连串的描述就是典型的用户画像。通俗点来说，构建用户画像的核心工作就是给客户或用户*打标签（Tagging）*。刚刚那一连串的描述就是用户系统中的典型标签。用户画像系统通过打标签的形式，把客户提供给业务人员，从而实现精准营销。
+
+### ID 映射（ID Mapping）
+
+用户画像的好处不言而喻，而且标签打得越多越丰富，就越能精确地表征一个人的方方面面。不过，在打一个个具体的标签之前，弄清楚**“你是谁”**是所有用户画像系统首要考虑的问题，这个问题也被称为 ID 识别问题。
+
+所谓的 ID 即 Identification，表示用户身份。在网络上，能够标识用户身份信息的常见 ID 有 5 种。
+
+1. 身份证号：这是最能表征身份的 ID 信息，每个身份证号只会对应一个人。
+2. 手机号：手机号通常能较好地表征身份。虽然会出现同一个人有多个手机号或一个手机号在不同时期被多个人使用的情形，但大部分互联网应用使用手机号表征用户身份的做法是很流行的。
+3. 设备 ID：在移动互联网时代，这主要是指手机的设备 ID 或 Mac、iPad 等移动终端设备的设备 ID。特别是手机的设备 ID，在很多场景下具备定位和识别用户的功能。常见的设备 ID 有 **iOS 端的 IDFA** 和 **Android 端的 IMEI**。
+4. 应用注册账号：这属于比较弱的一类 ID。每个人在不同的应用上可能会注册不同的账号，但依然有很多人使用通用的注册账号名称，因此具有一定的关联性和识别性。
+5. Cookie：在 PC 时代，浏览器端的 Cookie 信息是很重要的数据，它是网络上表征用户信息的重要手段之一。只不过随着移动互联网时代的来临，Cookie 早已江河日下，如今作为 ID 数据的价值也越来越小了。我个人甚至认为，在构建基于移动互联网的新一代用户画像时，Cookie 可能要被抛弃了。
+
+在构建用户画像系统时，我们会从多个数据源上源源不断地收集各种个人用户数据。通常情况下，这些数据不会全部携带以上这些 ID 信息。比如在读取浏览器的浏览历史时，你获取的是 Cookie 数据，而读取用户在某个 App 上的访问行为数据时，你拿到的是用户的设备 ID 和注册账号信息。
+
+### 实时 ID Mapping
+
+我举个简单的例子。假设有一个金融理财用户张三，他首先在苹果手机上访问了某理财产品，然后在安卓手机上注册了该理财产品的账号，最后在电脑上登录该账号，并购买了该理财产品。ID Mapping 就是要将这些不同端或设备上的用户信息聚合起来，然后找出并打通用户所关联的所有 ID 信息。
+
+实时 ID Mapping 的要求就更高了，它要求我们能够实时地分析从各个设备收集来的数据，并在很短的时间内完成 ID Mapping。打通用户 ID 身份的时间越短，我们就能越快地为其打上更多的标签，从而让用户画像发挥更大的价值。
+
+从实时计算或流处理的角度来看，实时 ID Mapping 能够转换成一个**流 - 表连接问题**（Stream-Table Join），即我们实时地将一个流和一个表进行连接。
+
+消息流中的每个事件或每条消息包含的是一个未知用户的某种信息，它可以是用户在页面的访问记录数据，也可以是用户的购买行为数据。这些消息中可能会包含我们刚才提到的若干种 ID 信息，比如页面访问信息中可能包含设备 ID，也可能包含注册账号，而购买行为信息中可能包含身份证信息和手机号等。
+
+连接的另一方表保存的是**用户所有的 ID 信息**，随着连接的不断深入，表中保存的 ID 品类会越来越丰富，也就是说，流中的数据会被不断地补充进表中，最终实现对用户所有 ID 的打通。
+
+### Kafka Streams 实现
+
+好了，现在我们就来看看如何使用 Kafka Streams 来实现一个特定场景下的实时 ID Mapping。为了方便理解，我们假设 ID Mapping 只关心身份证号、手机号以及设备 ID。下面是用 Avro 写成的 Schema 格式：
+
+```json
+{
+  "namespace": "kafkalearn.userprofile.idmapping",
+  "type": "record",
+  "name": "IDMapping",
+  "fields": [
+    {"name": "deviceId", "type": "string"},
+    {"name": "idCard", "type": "string"},
+    {"name": "phone", "type": "string"}
+  ]
+}
+```
+
+> **Avro 是 Java 或大数据生态圈常用的序列化编码机制**，比如直接使用 JSON 或 XML 保存对象。Avro 能极大地节省磁盘占用空间或网络 I/O 传输量，因此普遍应用于大数据量下的数据传输。
+
+在这个场景下，我们需要两个 Kafka 主题，一个用于构造表，另一个用于构建流。这两个主题的消息格式都是上面的 IDMapping 对象。
+
+新用户在填写手机号注册 App 时，会向第一个主题发送一条消息，该用户后续在 App 上的所有访问记录，也都会以消息的形式发送到第二个主题。值得注意的是，发送到第二个主题上的消息有可能携带其他的 ID 信息，比如手机号或设备 ID 等。就像我刚刚所说的，这是一个典型的流 - 表实时连接场景，连接之后，我们就能够将用户的所有数据补齐，实现 ID Mapping 的打通。
+
+基于这个设计思路，我先给出完整的 Kafka Streams 代码，稍后我会对重点部分进行详细解释：
+
+```java
+package kafkalearn.userprofile.idmapping;
+
+// omit imports……
+
+public class IDMappingStreams {
+
+  public static void main(String[] args) throws Exception {
+
+    if (args.length < 1) {
+      throw new IllegalArgumentException("Must specify the path for a configuration file.");
+    }
+
+    IDMappingStreams instance = new IDMappingStreams();
+    Properties envProps = instance.loadProperties(args[0]);
+    Properties streamProps = instance.buildStreamsProperties(envProps);
+    Topology topology = instance.buildTopology(envProps);
+
+    instance.createTopics(envProps);
+
+    final KafkaStreams streams = new KafkaStreams(topology, streamProps);
+    final CountDownLatch latch = new CountDownLatch(1);
+
+    // Attach shutdown handler to catch Control-C.
+    Runtime.getRuntime().addShutdownHook(new Thread("streams-shutdown-hook") {
+      @Override
+      public void run() {
+        streams.close();
+        latch.countDown();
+      }
+    });
+
+    try {
+      streams.start();
+      latch.await();
+    } catch (Throwable e) {
+      System.exit(1);
+    }
+    System.exit(0);
+  }
+
+  private Properties loadProperties(String propertyFilePath) throws IOException {
+    Properties envProps = new Properties();
+    try (FileInputStream input = new FileInputStream(propertyFilePath)) {
+      envProps.load(input);
+      return envProps;
+    }
+  }
+
+  private Properties buildStreamsProperties(Properties envProps) {
+    Properties props = new Properties();
+    props.put(StreamsConfig.APPLICATION_ID_CONFIG, envProps.getProperty("application.id"));
+    props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, envProps.getProperty("bootstrap.servers"));
+    props.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass());
+    props.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass());
+    return props;
+  }
+
+  private void createTopics(Properties envProps) {
+    Map<String, Object> config = new HashMap<>();
+    config.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, envProps.getProperty("bootstrap.servers"));
+    try (AdminClient client = AdminClient.create(config)) {
+      List<NewTopic> topics = new ArrayList<>();
+      topics.add(new NewTopic(
+        envProps.getProperty("stream.topic.name"),
+        Integer.parseInt(envProps.getProperty("stream.topic.partitions")),
+        Short.parseShort(envProps.getProperty("stream.topic.replication.factor"))));
+
+      topics.add(new NewTopic(
+        envProps.getProperty("table.topic.name"),
+        Integer.parseInt(envProps.getProperty("table.topic.partitions")),
+        Short.parseShort(envProps.getProperty("table.topic.replication.factor"))));
+
+      client.createTopics(topics);
+    }
+  }
+
+  private Topology buildTopology(Properties envProps) {
+    final StreamsBuilder builder = new StreamsBuilder();
+    final String streamTopic = envProps.getProperty("stream.topic.name");
+    final String rekeyedTopic = envProps.getProperty("rekeyed.topic.name");
+    final String tableTopic = envProps.getProperty("table.topic.name");
+    final String outputTopic = envProps.getProperty("output.topic.name");
+    final Gson gson = new Gson();
+
+    // 1. 构造表
+    KStream<String, IDMapping> rekeyed = builder.<String, String>stream(tableTopic)
+      .mapValues(json -> gson.fromJson(json, IDMapping.class))
+      .filter((noKey, idMapping) -> !Objects.isNull(idMapping.getPhone()))
+      .map((noKey, idMapping) -> new KeyValue<>(idMapping.getPhone(), idMapping));
+    rekeyed.to(rekeyedTopic);
+    KTable<String, IDMapping> table = builder.table(rekeyedTopic);
+
+    // 2. 流-表连接
+    KStream<String, String> joinedStream = builder.<String, String>stream(streamTopic)
+      .mapValues(json -> gson.fromJson(json, IDMapping.class))
+      .map((noKey, idMapping) -> new KeyValue<>(idMapping.getPhone(), idMapping))
+      .leftJoin(table, (value1, value2) -> IDMapping.newBuilder()
+                .setPhone(value2.getPhone() == null ? value1.getPhone() : value2.getPhone())
+                .setDeviceId(value2.getDeviceId() == null ? value1.getDeviceId() : value2.getDeviceId())
+                .setIdCard(value2.getIdCard() == null ? value1.getIdCard() : value2.getIdCard())
+                .build())
+      .mapValues(v -> gson.toJson(v));
+
+    joinedStream.to(outputTopic);
+
+    return builder.build();
+  }
+}
+```
+
+这个 Java 类代码中最重要的方法是 **buildTopology 函数**，它构造了我们打通 ID Mapping 的所有逻辑。
+
+在该方法中，我们首先构造了 StreamsBuilder 对象实例，这是构造任何 Kafka Streams 应用的第一步。之后我们读取配置文件，获取了要读写的所有 Kafka 主题名。在这个例子中，我们需要用到 4 个主题，它们的作用如下：
+
+- `streamTopic`：保存用户登录 App 后发生的各种行为数据，格式是 IDMapping 对象的 JSON 串。你可能会问，前面不是都创建 Avro Schema 文件了吗，怎么这里又用回 JSON 了呢？原因是这样的：社区版的 Kafka 没有提供 Avro 的序列化 / 反序列化类支持，如果我要使用 Avro，必须改用 Confluent 公司提供的 Kafka，但这会偏离我们专栏想要介绍 Apache Kafka 的初衷。所以，我还是使用 JSON 进行说明。这里我只是用了 Avro Code Generator 帮我们提供 IDMapping 对象各个字段的 set/get 方法，你使用 Lombok 也是可以的。
+- `rekeyedTopic`：这个主题是一个中间主题，它将 streamTopic 中的手机号提取出来作为消息的 Key，同时维持消息体不变。
+- `tableTopic`：保存用户注册 App 时填写的手机号。我们要使用这个主题构造连接时要用到的表数据。
+- `outputTopic`：保存连接后的输出信息，即打通了用户所有 ID 数据的 IDMapping 对象，将其转换成 JSON 后输出。
+
+buildTopology 的第一步是构造表，即 KTable 对象。我们修改初始的消息流，以用户注册的手机号作为 Key，构造了一个中间流，之后将这个流写入到 rekeyedTopic，最后直接使用 builder.table 方法构造出 KTable。这样每当有新用户注册时，该 KTable 都会新增一条数据。
+
+有了表之后，我们继续构造消息流来封装用户登录 App 之后的行为数据，我们同样提取出手机号作为要连接的 Key，之后使用 KStream 的 **leftJoin** 方法将其与上一步的 KTable 对象进行关联。
+
+在关联的过程中，我们同时提取两边的信息，尽可能地补充到最后生成的 IDMapping 对象中，然后将这个生成的 IDMapping 实例返回到新生成的流中。最后，我们将它写入到 outputTopic 中保存。
+
+至此，我们使用了不到 200 行的 Java 代码，就简单实现了一个真实场景下的实时 ID Mapping 任务。理论上，你可以将这个例子继续扩充，扩展到任意多个 ID Mapping，甚至是含有其他标签的数据，连接原理是相通的。在我自己的项目中，我借助于 Kafka Streams 帮助我实现了用户画像系统的部分功能，而 ID Mapping 就是其中的一个。
 
 
 
+## 搭建开发环境、阅读源码方法、经典学习资料大揭秘
+
+### Kafka 开发环境搭建
+
+#### 第 1 步：安装 Java 和 Gradle
+
+要搭建 Kafka 开发环境，你必须要安装好 Java 和 Gradle，同时在 IDEA 中安装 Scala 插件。你最好把 Java 和 Gradle 环境加入到环境变量中。
+
+#### 第 2 步：下载 Kafka 的源码
+
+```sh
+$ git clone https://github.com/apache/kafka.git
+```
+
+这个命令下载的是 *Kafka 的 trunk 分支代码*，也就是**当前包含所有已提交 Patch 的最新代码，甚至比 Kafka 官网上能够下载到的最新版本还要超前很多**。值得注意的是，如果你想向 Kafka 社区贡献代码，通常要以 trunk 代码为主体进行开发。
+
+#### 第 3 步：下载 Gradle 的 Wrapper 程序套件
+
+代码下载完成之后，会自动创建一个名为 kafka 的子目录，此时需要进入到该目录下，执行下面的这条命令，主要目的是下载 Gradle 的 Wrapper 程序套件。
+
+```sh
+$ gradle
+Starting a Gradle Daemon (subsequent builds will be faster)
 
 
+> Configure project :
+Building project 'core' with Scala version 2.12.9
+Building project 'streams-scala' with Scala version 2.12.9
 
 
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 6.0.
+Use '--warning-mode all' to show the individual deprecation warnings.
+See https://docs.gradle.org/5.3/userguide/command_line_interface.html#sec:command_line_warning
+```
 
+#### 第 4 步：将 Kafka 源码编译打包成 Jar 文件
 
+运行下列命令，将 Kafka 源码编译打包成 Jar 文件：
 
+```sh
+$ ./gradlew clean releaseTarGz
+```
 
+通常你需要等待一段时间，经过一系列操作之后，比如 Gradle 拉取依赖 Jar 包、编译 Kafka 源码、打包等，你可以在 core 的 build/distributions 下面找到生成的 tgz 包：kafka_2.12-2.4.0-SNAPSHOT。解压之后，这就是一个可以正常启动运行的 Kafka 环境了。
 
+#### 第 5 步：把 Kafka 源码工程导入到 IDEA 中
 
+这也是搭建开发环境的最后一步。你可以先执行下面的命令去创建 IDEA 项目所需要的项目文件：
 
+```sh
+$ ./gradlew idea  #如果你用的是Eclipse，执行./gradlew eclipse即可
+```
 
+接着，你需要打开 IDEA，选择“打开工程”，然后再选择 kafka 目录即可。
 
+至此，我们就在 IDEA 中搭建了 Kafka 源码环境。你可以打开 Kafka.scala 文件，右键选择“运行”，这时，你应该可以看到启动 Kafka Broker 的命令行用法说明，如下图所示：
 
+<img src="images/1079.png" style="zoom:25%;" />
 
+总体来说，Kafka 工程自从由使用 sbt 改为使用 Gradle 管理之后，整个项目的编译和构建变得简单多了，只需要 3、4 条命令就能在本机环境中搭建测试开发环境了。
 
+### Kafka 源码阅读方法
 
+下图是 IDEA 上 Kafka 工程的完整目录列表。
 
+<img src="images/1080.png" style="zoom:25%;" />
 
+在这张图中，有几个子目录需要你重点关注一下。
+
+1. **core**：Broker 端工程，保存 Broker 代码。
+2. **clients**：Client 端工程，保存所有 Client 代码以及所有代码都会用到的一些公共代码。
+3. **streams**：Streams 端工程，保存 Kafka Streams 代码。
+4. **connect**：Connect 端工程，保存 Kafka Connect 框架代码以及 File Connector 代码。
+
+Kafka 源码有 50 万行之多，没有重点地进行通读，效率会特别低。
+
+#### core 包
+
+建议你先从 core 包读起，也就是先从 Broker 端的代码着手。你可以按照下面的顺序进行阅读。
+
+1. **log 包**。log 包中定义了 Broker 底层消息和索引保存机制以及物理格式，非常值得一读。特别是 Log、LogSegment 和 LogManager 这几个类，几乎定义了 Kafka 底层的消息存储机制，一定要重点关注。
+2. **controller 包**。controller 包实现的是 Kafka Controller 的所有功能，特别是里面的 KafkaController.scala 文件，它封装了 Controller 的所有事件处理逻辑。如果你想弄明白 Controller 的工作原理，最好多读几遍这个将近 2000 行的大文件。
+3. **coordinator 包下的 group 包代码**。当前，coordinator 包有两个子 package：group 和 transaction。前者封装的是 Consumer Group 所用的 Coordinator；后者封装的是支持 Kafka 事务的 Transaction Coordinator。我个人觉得你最好把 group 包下的代码通读一遍，了解下 Broker 端是如何管理 Consumer Group 的。这里比较重要的是 GroupMetadataManager 和 GroupCoordinator 类，它们定义了 Consumer Group 的元数据信息以及管理这些元数据的状态机机制。
+4. **network 包代码以及 server 包下的部分代码**。如果你还有余力的话，可以再读一下这些代码。前者的 SocketServer 实现了 Broker 接收外部请求的完整网络流程。我们在专栏第 24 讲说过，Kafka 用的是 Reactor 模式。如果你想搞清楚 Reactor 模式是怎么在 Kafka“落地”的，就把这个类搞明白吧。
+
+从总体流程上看，Broker 端顶部的入口类是 KafkaApis.scala。这个类是处理所有入站请求的总入口，下图展示了部分请求的处理方法：
+
+<img src="images/1081.png" style="zoom: 50%;" />
+
+你可以进到不同的方法里面去看实际的请求处理逻辑。比如 handleProduceRequest 方法是处理 Producer 生产消息请求的，而 handleFetchRequest 方法则是处理消息读取请求的。
+
+#### clients 包
+
+在客户端 clients 包下，我推荐你重点阅读 4 个部分的内容。
+
+1. **org.apache.kafka.common.record 包**。这个包下面是各种 Kafka 消息实体类，比如用于在内存中传输的 MemoryRecords 类以及用于在磁盘上保存的 FileRecords 类。
+2. **org.apache.kafka.common.network 包**。这个包不用全看，你重点关注下 Selector、KafkaChannel 就好了，尤其是前者，它们是实现 Client 和 Broker 之间网络传输的重要机制。如果你完全搞懂了这个包下的 Java 代码，Kafka 的很多网络异常问题也就迎刃而解了。
+3. **org.apache.kafka.clients.producer 包**。顾名思义，它是 Producer 的代码实现包，里面的 Java 类很多，你可以重点看看 KafkaProducer、Sender 和 RecordAccumulator 这几个类。
+4. **org.apache.kafka.clients.consumer 包**。它是 Consumer 的代码实现包。同样地，我推荐你重点阅读 KafkaConsumer、AbstractCoordinator 和 Fetcher 这几个 Java 文件。
+
+另外，在阅读源码的时候，不管是 Broker 端还是 Client 端，你最好结合 Java 调试一起来做。通过 Debug 模式下打断点的方式，一步一步地深入了解 Kafka 中各个类的状态以及在内存中的保存信息，这种阅读方式会让你事半功倍。
+
+### Kafka 推荐学习资料
+
+如果你暂时对搭建开发环境或阅读源码没有兴趣，但又想快速深入地学习 Kafka 的话，直接学习现成的资料也不失为一个妙法。
+
+1. [Kafka 官网](https://kafka.apache.org/documentation/)。很多人会忽视官网，但其实官网才是最重要的学习资料。你只需要通读几遍官网，并切实掌握里面的内容，就已经能够较好地掌握 Kafka 了。
+2.  [Kafka 的JIRA 列表](https://issues.apache.org/jira/browse/KAFKA-8832?filter=-4&jql=project%20%3D%20KAFKA%20ORDER%20BY%20created%20DESC)。当你碰到 Kafka 抛出的异常的时候，不妨使用异常的关键字去 JIRA 中搜索一下，看看是否是已知的 Bug。很多时候，我们碰到的问题早就已经被别人发现并提交到社区了。此时，JIRA 列表就是你排查问题的好帮手。
+3. [Kafka KIP 列表](https://cwiki.apache.org/confluence/display/KAFKA/Kafka+Improvement+Proposals)。KIP 的全称是 Kafka Improvement Proposals，即 Kafka 新功能提议。你可以看到 Kafka 的新功能建议及其讨论。如果你想了解 Kafka 未来的发展路线，KIP 是不能不看的。当然，如果你想到了一些 Kafka 暂时没有的新功能，也可以在 KIP 中提交自己的提议申请，等待社区的评审。
+4. Kafka 内部团队维护的[设计文档](https://cwiki.apache.org/confluence/display/KAFKA/Index)。在这里，你几乎可以找到所有的 Kafka 设计文档。其中关于 Controller 和新版本 Consumer 的文章都很有深度，我建议你一定要重点读一读。
+5. [StackOverflow 论坛](https://stackoverflow.com/questions/tagged/apache-kafka?sort=newest&pageSize=15)。当今，StackOverflow 论坛对程序员意味着什么，想必我不说你也知道。这里面的 Kafka 问题很有深度。事实上，从仅仅是 StackOverflow 上的一个问题，到最后演变成了 Kafka 的 Bug 修复或新功能实现的情况屡见不鲜。
+6. Confluent 公司维护的[技术博客](https://www.confluent.io/blog/)。这是 Kafka 商业化公司 Confluent 团队自己维护的技术博客，里面的技术文章皆出自 Kafka Committer 之手，质量上乘，我从中受益匪浅。比如讲述 Kafka 精确一次处理语义和事务的文章，含金量极高，你一定要去看一下。
+7. [老师博客](https://www.cnblogs.com/huxi2b/)。我会定期在博客上更新 Kafka 方面的原创文章。有的是我对 Kafka 技术的一些理解，有的是 Kafka 的最新动态。虽然不是国内质量最好的，但应该是坚持时间最长的。毕竟，我这个博客就只有 Kafka 的内容，而且已经写了好几年了。
+
+3 本学习 Kafka 的书
+
+1. [《Apache Kafka 实战》](https://book.douban.com/subject/30221096/)，我在里面总结了我这几年使用和学习 Kafka 的各种实战心得。这本书成书于 2018 年，虽然是以 Kafka 1.0 为模板撰写的，而 Kafka 目前已经出到了 2.3 版本，但其消息引擎方面的功能并没有什么重大变化，因此绝大部分内容依然是有效的。
+2. [《Kafka 技术内幕》](https://book.douban.com/subject/27179953/)。我个人非常喜欢这个作者的书写风格，而且这本书内容翔实，原理分析得很透彻，配图更是精彩。
+3. [《深入理解 Kafka》](https://book.douban.com/subject/30437872/)的书。这本书的作者是一位精通 RabbitMQ 和 Kafka 的著名技术人，对消息中间件有着自己独特的见解。
+
+## 这些Kafka核心要点，你都掌握了吗
+
+### 简答题
+
+#### 如果副本长时间不在 ISR 中，这说明什么
+
+如果副本长时间不在 ISR 中，这表示 Follower 副本无法及时跟上 Leader 副本的进度。通常情况下，你需要查看 Follower 副本所在的 Broker 与 Leader 副本的连接情况以及 Follower 副本所在 Broker 上的负载情况。
+
+#### 请你谈一谈 Kafka Producer 的 acks 参数的作用
+
+目前，acks 参数有三个取值：0、1 和 -1（也可以表示成 all）。
+
+0 表示 Producer 不会等待 Broker 端对消息写入的应答。这个取值对应的 Producer 延迟最低，但是存在极大的丢数据的可能性。
+
+1 表示 Producer 等待 Leader 副本所在 Broker 对消息写入的应答。在这种情况下，只要 Leader 副本数据不丢失，消息就不会丢失，否则依然有丢失数据的可能。
+
+-1 表示 Producer 会等待 ISR 中所有副本所在 Broker 对消息写入的应答。这是最强的消息持久化保障。
+
+#### Kafka 中有哪些重要组件
+
+- Broker——Kafka 服务器，负责各类 RPC 请求的处理以及消息的持久化。
+- 生产者——负责向 Kafka 集群生产消息。
+- 消费者——负责从 Kafka 集群消费消息。
+- 主题——保存消息的逻辑容器，生产者发送的每条消息都会被发送到某个主题上。
+
+#### 简单描述一下消费者组（Consumer Group）
+
+消费者组是 Kafka 提供的可扩展且具有容错性的消费者机制。同一个组内包含若干个消费者或消费者实例（Consumer Instance），它们共享一个公共的 ID，即 Group ID。组内的所有消费者协调在一起来消费订阅主题的所有分区。每个分区只能由同一个消费组内的一个消费者实例来消费。
+
+#### Kafka 为什么不像 Redis 和 MySQL 那样支持读写分离
+
+第一，这和它们的使用场景有关。对于那种读操作很多而写操作相对不频繁的负载类型而言，采用读写分离是非常不错的方案——我们可以添加很多 Follower 横向扩展，提升读操作性能。反观 Kafka，它的主要场景还是在消息引擎，而不是以数据存储的方式对外提供读服务，通常涉及频繁地生产消息和消费消息，这不属于典型的读多写少场景。因此，读写分离方案在这个场景下并不太适合。
+
+第二，Kafka 副本机制使用的是异步消息拉取，因此存在 Leader 和 Follower 之间的不一致性。如果要采用读写分离，必然要处理副本滞后引入的一致性问题，比如如何实现 Read-your-writes、如何保证单调读（Monotonic Reads）以及处理消息因果顺序颠倒的问题。相反，如果不采用读写分离，所有客户端读写请求都只在 Leader 上处理，也就没有这些问题了。当然，最后的全局消息顺序颠倒的问题在 Kafka 中依然存在，常见的解决办法是使用单分区，其他的方案还有 Version Vector，但是目前 Kafka 没有提供。
