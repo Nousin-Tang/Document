@@ -245,7 +245,7 @@ final float loadFactor;
 > 将不需要序列化的属性前添加关键字transient，序列化对象的时候，这个属性就不会被序列化。
 6. 哈希表结构图
 
-![HashMap底层存储结构](images/HashMap底层存储结构.png)
+![HashMap底层存储结构](images/hashmap/HashMap底层存储结构.png)
 
 
 ## 源码分析
