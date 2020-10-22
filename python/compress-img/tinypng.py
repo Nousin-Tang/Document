@@ -12,12 +12,12 @@ from urllib.request import Request, urlopen
 # 使用说明
 description = '''
         使用方法 
-        1. python3 tinypng.py -r picDocPath
+        1. python3 tinypng.py -r picPath
             -r 参数会压缩文件夹内的图片并替换原图片
             eg: python3 tinypng.py -r /Users/unnous/project/git-clone/Document/mysql/image
-        2. python3 tinypng.py -i picDocPath -o outputDocPath
-            -o 参数可以为空，默认存在picDocPath/tinypng 内
-            eg: python3 tinypng.py -i /Users/unnous/project/git-clone/Document/mysql/image -o
+        2. python3 tinypng.py -i inputPath -o outputPath
+            -o 参数可以为空，默认存在 inputPath/tinypng 内
+            eg: python3 tinypng.py -i /Users/unnous/Downloads/images -o /Users/unnous/Downloads/images1
         去 https://tinypng.com/developers 申请自己的key 每key每月免费压缩500个图
         默认并发数为10 可以自己调整
         若想直接调试可以给 input_doc_path、output_doc_path 赋值
