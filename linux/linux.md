@@ -5,16 +5,6 @@
 ### 查看开放的端口号
 `iptables -L -n`
 
-### 关闭端口号
-```
-# iptable
-iptables -A INPUT -p tcp --drop 端口号 -j DROP
-iptables -A OUTPUT -p tcp --dport 端口号 -j DROP
-
-# firewall
-firewall-cmd --zone=public --remove-port=9930/tcp --permanent
-```
-
 ### 打开端口号
 ```
 # iptable
@@ -23,6 +13,16 @@ iptables -I OUTPUT -ptcp --dport 端口号 -j ACCEPT
 
 # firewall
 firewall-cmd --zone=public --add-port=9930/tcp --permanent
+```
+
+### 关闭端口号
+```
+# iptable
+iptables -A INPUT -p tcp --drop 端口号 -j DROP
+iptables -A OUTPUT -p tcp --dport 端口号 -j DROP
+
+# firewall
+firewall-cmd --zone=public --remove-port=9930/tcp --permanent
 ```
 
 ### 保存修改
@@ -52,6 +52,9 @@ rm -f /var/log/httpd/access.log
 
 ## 发布 jar
 ```
-# 
+# 输出日志到 /home/jar/xxx.log 中
 nohup java -jar /home/jar/xxx.jar  > /home/jar/xxx.log 2>&1 &
+
+# 不输出日志
+nohup java -jar /home/jar/xxx.jar  > /dev/null 2>&1 &
 ```
