@@ -1,4 +1,43 @@
 
+## 拦截器
+
+```java
+public class MDCInterceptor implements HandlerInterceptor {
+
+    // 日志文件key
+    public static final String TRACE_ID = "traceId";
+
+    @Override
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+        MDC.put(TRACE_ID, UUID.randomUUID().toString().replace("-", "").substring(0, 6));
+        return true;
+    }
+
+    @Override
+    public void postHandle(HttpServletRequest request, HttpServletResponse response, Object handler, ModelAndView modelAndView) throws Exception {
+    }
+
+    @Override
+    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) throws Exception {
+        MDC.remove(TRACE_ID);
+    }
+}
+
+@Configuration
+public class MyWebMvcConfig implements WebMvcConfigurer {
+
+    @Autowired
+    MDCInterceptor mdcInterceptor;
+
+    /**
+     * 注册 MDCInterceptor 拦截器
+     */
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(mdcInterceptor).addPathPatterns("/**"); //所有路径都被拦截
+    }
+}
+```
 
 # Springboot 配置相关
 ## log 相关配置
