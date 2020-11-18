@@ -1,5 +1,5 @@
 
-## 拦截器
+## 拦截器（版本2.0 及以上）
 
 ```java
 public class MDCInterceptor implements HandlerInterceptor {
@@ -40,7 +40,7 @@ public class MyWebMvcConfig implements WebMvcConfigurer {
 ```
 
 # Springboot 配置相关
-## log 相关配置
+## log 相关配置（版本2.2）
 ```yaml
 logging:
   file:
