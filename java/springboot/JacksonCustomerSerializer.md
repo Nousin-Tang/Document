@@ -74,7 +74,6 @@ public class SerializerApplication {
             public void serialize(String dto, JsonGenerator jsonGenerator, SerializerProvider serializerProvider) throws IOException {
                 String msg = StringEscapeUtils.unescapeHtml4(dto);
                 jsonGenerator.writeString(msg);
-            
             }
         }
     }
