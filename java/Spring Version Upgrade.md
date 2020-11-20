@@ -205,11 +205,11 @@ public void addInterceptors(InterceptorRegistry registry) {
   # 修改前
   spring:
      datasource:  
-  	  url: jdbc:mysql://localhost:3306/database?...
-  	  username: root
-  	  password: root
-  	  type: com.alibaba.druid.pool.DruidDataSource
-  	  driver-class-name: com.mysql.cj.jdbc.Driver
+        url: jdbc:mysql://localhost:3306/database?...
+        username: root
+        password: root
+        type: com.alibaba.druid.pool.DruidDataSource
+        driver-class-name: com.mysql.cj.jdbc.Driver
   # 修改后
    spring:
      datasource:  
