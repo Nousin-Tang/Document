@@ -19,7 +19,7 @@
 *.dex
 bin/
 gen/
-/*/build/
+/**/build/
 proguard/
 
 # maven 相关过滤
