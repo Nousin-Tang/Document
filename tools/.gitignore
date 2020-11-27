@@ -21,6 +21,15 @@ bin/
 gen/
 /**/build/
 proguard/
+.gradletasknamecache
+
+# eclipse
+.metadata
+.project
+.classpath
+.recommenders
+.settings
+.springBeans
 
 # maven 相关过滤
 .mvn/timing.properties
@@ -42,3 +51,10 @@ com_crashlytics_export_strings.xml
 crashlytics.properties
 crashlytics-build.properties
 fabric.properties
+
+# 其他
+.vscode
+MANIFEST.MF
+activemq-data
+dump.rdb
+transaction-logs

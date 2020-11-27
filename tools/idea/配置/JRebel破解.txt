@@ -1,0 +1,4 @@
+第一步：安装 JRebel 插件
+第二步：获取 GUID：http://jrebel.cicoding.cn/guid
+第三步：拼接生成的 GUID，如：http://jrebel.cicoding.cn/4B068EB5-0941-4645-1E98-FC077D530A61
+第四部：打开 IDEA ，找到File -> Settings -> JRebel & XRebel 点击Chanage license，填写URL和邮箱地址。点击Chanage license。
