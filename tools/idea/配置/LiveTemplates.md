@@ -1,4 +1,4 @@
-###将代码粘贴到 Preferences | Editor | Live Templates 下的分组中，选中分组然后粘贴；
+### 将代码粘贴到 Preferences | Editor | Live Templates 下的分组中，选中分组然后粘贴；
 ```html
 <template name="***" value="/**&#10; * $end$&#10; * &#10; * @author tangwc&#10; * @since $date$&#10; */" shortcut="ENTER" description="类注释" toReformat="false" toShortenFQNames="true">
   <variable name="end" expression="" defaultValue="" alwaysStopAt="false" />
