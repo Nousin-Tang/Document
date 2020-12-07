@@ -15,7 +15,7 @@
 
 
 
-### JAVASE核心基础
+### JavaSE核心基础
 
 | 基本语法和面向对象 | 集合框架    | IO框架 | 多线程编程         | 网络编程     |
 | ------------------ | ----------- | ------ | ------------------ | ------------ |
@@ -56,7 +56,7 @@
 
 
 
-### JAVA后端框架
+### Java后端框架
 
 | SERVLET/JSP     | SPRING             | SPRINGMVC             | MYBATIS            | Spring Boot               |
 | --------------- | ------------------ | --------------------- | ------------------ | ------------------------- |
@@ -259,16 +259,16 @@
 
 | ActiveMq                                                     | RabbitMq                                            | RocketMq                                                     | Kafka                | 消息协议      |
 | ------------------------------------------------------------ | --------------------------------------------------- | ------------------------------------------------------------ | -------------------- | ------------- |
-| ActiveMq 应用场景、HELLOWORLD、服务器搭建                    | RabbitMq 与其他消息中间件特点对比                   | RocketMq 功能 大纲 消息中间件应用场景 LINUX的部署 角色 对比JMS | Kafka框架原理        | MQTT协议      |
+| ActiveMq 应用场景、HELLOWORLD、服务器搭建                    | RabbitMq 与其他消息中间件特点对比                   | RocketMq 功能 大纲 消息中间件应用场景 Linux的部署 角色 对比JMS | Kafka框架原理        | MQTT协议      |
 | ActiveMq API 持久化 优先级 事务 持久化方式 ACK 安全认证      | RabbitMq 事务和 CONFIRM 发送方消息确认              | RocketMq 消息消费模式 集群消息 广播消息 同步消息 异步消息 单向消息 批量消息 TAG SQL表达式过滤 | Kafka特性及实现      | XMPP协议      |
 | ActiveMq 死信队列，独占消费，分组消费，TOPIC，消息类型       | RabbitMq 整合企业级消息总线 AMQP 标准协议           | RocketMq 分布式事务 事务消息 顺序消费 重试机制               | Kafka文件存储机制    | STOMP协议     |
 | ActiveMq 消息发送原理，持久化机制，同步异步，定时、延迟、重试发送、Spring Boot整合 | RabbitMq 死信队列 DLX、DLK、TTL 认识与实战          | RocketMq 源码分析 Consumer启动流程 长轮询 ProcessQueue       | Kafka分区及可靠性    | AMQP协议      |
 | ActiveMq BROWSER、QueueREQUESTOR、PREFETCHSIZE、消费缓冲与消息积压、消息到底是推还是拉、同步与异步发送、同步与异步消费 | RabbitMq 消息重发 CONFIRMLISTENER 和 RETURNLISTENER | RocketMq 源码分析 MQCLIENTINSTANCE.START 任务调度            | Kafka Broker特性     | WAMP协议      |
 | ActiveMq JMSCORRELATIONID、TOPIC加强 可追溯消息 调优         | RabbitMq 集群架构                                   | RocketMq 刷盘机制源码分析 Broker启动流程 源码分析            | Kafka高效性相关设计  | HTTP协议      |
 |                                                              | RabbitMq 弹性伸缩 海量堆积处理方案                  | RocketMq NameServer特点 NameServer启动流程 消息路由之HEARTBEAT信息收集 集群模式消息存储架构模型 消息路由发现 | Kafka Consumer特性   | COAP协议      |
-|                                                              | VHOST & Queue & Exchange 细粒度权限控制             | RocketMq 搭建高可用主从同步双写集群，基于RAFT 协议的 COMMITLOG 存储库DLEGER | Kafka PERDUCER特性   | WEBSOCKET协议 |
+|                                                              | VHOST & Queue & Exchange 细粒度权限控制             | RocketMq 搭建高可用主从同步双写集群，基于RAFT 协议的 COMMITLOG 存储库DLEGER | Kafka Producer特性   | WEBSOCKET协议 |
 |                                                              | FANOUT、DIRECT 、TOPIC 类型                         | RocketMq 常见面试题，TOPIC分布、负载均衡                     | Kafka OFFSET维护方案 |               |
-|                                                              | 监控告警、资源报表、OPEN API（Restful）             | RocketMq 面试总结 Spring Boot开发                            | Kafka StreamING      |               |
+|                                                              | 监控告警、资源报表、OPEN API（Restful）             | RocketMq 面试总结 Spring Boot开发                            | Kafka Streaming      |               |
 |                                                              | Spring Boot集成RabbitMq                             |                                                              |                      |               |
 
 
@@ -431,9 +431,9 @@
 | Sleuth                            | ZipKin                                            | SkyWalking                                   |
 | --------------------------------- | ------------------------------------------------- | -------------------------------------------- |
 | 什么是服务链路追踪                | ZipKin中的Collector、Storage、Restful API、WEB UI | SkyWalking 非侵入式埋点                      |
-| 分布式计算八大误区                | 使用ZipKin收集Sleuth数据                          | 调用链监控OPENTRACING                        |
-| Sleuth收集跟踪信息                | LINUX下ZipKin部署                                 | SkyWalking 多种调用中间件                    |
-| Sleuth中的SPAN、TRACE、ANNOTATION | Spring Cloud整合Sleuth+ZipKin                     | SkyWalking 告警模块使用                      |
+| 分布式计算八大误区                | 使用ZipKin收集Sleuth数据                          | 调用链监控OpenTracing                        |
+| Sleuth收集跟踪信息                | Linux下ZipKin部署                                 | SkyWalking 多种调用中间件                    |
+| Sleuth中的Span、Trace、Annotation | Spring Cloud整合Sleuth+ZipKin                     | SkyWalking 告警模块使用                      |
 | Spring Cloud整合Sleuth            | 使用Sleuth+ZipKin跟踪服务                         | SkyWalking 日志组件集成                      |
 |                                   |                                                   | 分布式追踪、性能指标分析、应用和服务依赖分析 |
 
@@ -453,19 +453,19 @@
 
 ### 分布式权限控制
 
-| JWT                             | OAUTH2.0                                                     | Spring Security             | Shiro / CAS             | 跨域管理               |
+| JWT                             | OAUTH2.0                                                     | Spring Security             | Shiro/CAS               | 跨域管理               |
 | ------------------------------- | ------------------------------------------------------------ | --------------------------- | ----------------------- | ---------------------- |
-| 微服务中高并发场景会话处理方案  | 移动端和桌面端应用的OAUTH2.0接入流程                         | JDBC用户存储                | Shiro权限管理、身份认证 | SESSION与COOKIES&TOKEN |
+| 微服务中高并发场景会话处理方案  | 移动端和桌面端应用的OAUTH2.0接入流程                         | JDBC用户存储                | Shiro权限管理、身份认证 | Session与Cookies&Token |
 | 无状态会话解决方案              | Resource OWNER、Resource Server、CLIENT Application、AUTHORIZATION Server | 记住我功能                  | Shiro架构流程           | 浏览器同源策略与跨域   |
 | JWT安全机制                     | 授权认证ANTHORIZATION_CODE、IMPLICIT、PASSWORD、CLIENT_CREDENTIALS | 同一用户多地点登录          | Shiro关键对象           | JSONP跨域访问原理      |
 | JWT组成结构                     | 微信授权中的OAUTH2.0                                         | 踢掉其他已登录的用户        | Shiro权限模型           | CORS                   |
-| JWT消息校验与互联网应用常见问题 | 在服务中部署OAUTH2.0                                         | 如何使用MYBATIS/JPA查询用户 | Shiro整合CAS            | SSO 原理               |
+| JWT消息校验与互联网应用常见问题 | 在服务中部署OAUTH2.0                                         | 如何使用Mybatis/JPA查询用户 | Shiro整合CAS            | SSO 原理               |
 |                                 |                                                              | 禁止其他终端登录            |                         |                        |
-|                                 |                                                              | STRICTHTTPFIREWALL          |                         |                        |
+|                                 |                                                              | StrictHttpFirewall          |                         |                        |
 |                                 |                                                              | 自定义配置                  |                         |                        |
 |                                 |                                                              | 角色匹配                    |                         |                        |
 |                                 |                                                              | ANT 风格路径表达式          |                         |                        |
-|                                 |                                                              | SECURITY中的USER对象        |                         |                        |
+|                                 |                                                              | Security中的User对象        |                         |                        |
 |                                 |                                                              | 自定义处理器                |                         |                        |
 |                                 |                                                              | 访问权限                    |                         |                        |
 |                                 |                                                              | 权限控制细粒度注解          |                         |                        |
@@ -478,13 +478,13 @@
 
 ### 分布式专题
 
-| 分布式ID       | 分布式幂等   | 分布式任务         | 分布式会话         |      |
-| -------------- | ------------ | ------------------ | ------------------ | ---- |
-| 数据库自增ID   | MVCC方案     | 单机任务调度问题   | 客户端存储         |      |
-| 数据库多主模式 | 去重表       | QUARTZ集群解决方案 | SESSION复制        |      |
-| 雪花算法       | 悲观锁       | TBSCHEDULE         | SESSION绑定        |      |
-| 美团LEAF       | 状态机幂等   | ELASTIC-JOB        | Redis的SESSION方案 |      |
-|                | 页面防重提交 | SATURN             |                    |      |
+| 分布式ID       | 分布式幂等   | 分布式任务                                         | 分布式会话         |      |
+| -------------- | ------------ | -------------------------------------------------- | ------------------ | ---- |
+| 数据库自增ID   | MVCC方案     | 单机任务调度问题                                   | 客户端存储         |      |
+| 数据库多主模式 | 去重表       | QUARTZ集群解决方案                                 | Session复制        |      |
+| 雪花算法       | 悲观锁       | [TBSchedule](https://github.com/taobao/TBSchedule) | Session绑定        |      |
+| 美团LEAF       | 状态机幂等   | ELASTIC-JOB                                        | Redis的Session方案 |      |
+|                | 页面防重提交 | SATURN                                             |                    |      |
 
 
 
@@ -538,18 +538,18 @@
 | BASE       | 前后端分离原则 | 动态解析       | 分层自动化及报告 | DDD的整洁架构之道            |
 | RAFT       | 服务无状态     | 缓存与异步     | UI自动化         | 领域的延展-领域事件          |
 | CAP        | 通信无状态     | 分布式解决方案 | 接口自动化       | 领域事件与CQRS               |
-| FMEA       | 最小知道原则   | 微服务治理方案 | TDD详解          | EVENTSTORMING 领域建模       |
+| FMEA       | 最小知道原则   | 微服务治理方案 | TDD详解          | EventStorming 领域建模       |
 
 
 
 ### 架构修炼指向
 
-| 存储高性能     | 计算高性能       | SERVICEMESH 理论与落地                    | 亿级流量接入           | 追踪与监控         |
+| 存储高性能     | 计算高性能       | ServiceMesh 理论与落地                    | 亿级流量接入           | 追踪与监控         |
 | -------------- | ---------------- | ----------------------------------------- | ---------------------- | ------------------ |
-| 数据库性能压测 | 单机高性能       | 为什么SERVICEMESH在理念上优于MICROSERVICE | 亿级流量系统架构之限流 | SPRING BOOT ADMIN  |
-| NOSQL数据库    | 集群高性能       | SERVICEMESH之 基础理论解析                | 亿级流量系统架构之扩容 | SkyWalking         |
-| 缓存中间件     | 调用高性能       | SERVICEMESH之 技术选型                    | 亿级流量系统架构之降级 | Sleuth、ZipKin     |
-| 分库分表中间件 | 网格服务高性能   | SERVICEMESH实战落地之ISTIO                | 亿级流量系统架构之分发 | Prometheus、ZABBIX |
+| 数据库性能压测 | 单机高性能       | 为什么ServiceMesh在理念上优于MicroService | 亿级流量系统架构之限流 | Spring Boot Admin  |
+| NOSQL数据库    | 集群高性能       | ServiceMesh之基础理论解析                 | 亿级流量系统架构之扩容 | SkyWalking         |
+| 缓存中间件     | 调用高性能       | ServiceMesh之 技术选型                    | 亿级流量系统架构之降级 | Sleuth、ZipKin     |
+| 分库分表中间件 | 网格服务高性能   | ServiceMesh实战落地之ISTIO                | 亿级流量系统架构之分发 | Prometheus、ZABBIX |
 | 分布式文件系统 | 虚拟、容器高性能 | 流量、安全、故障、实战                    | 亿级流量系统架构之网关 | Grafana            |
 
 
@@ -585,29 +585,29 @@
 
 ### 源码原理
 
-| SPRING源码         | LINUX KERNEL源码                          | JVM HOTSPOT源码                     | 中间件源码 | 大数据源码 |
+| SPRING源码         | Linux KERNEL源码                          | JVM HOTSPOT源码                     | 中间件源码 | 大数据源码 |
 | ------------------ | ----------------------------------------- | ----------------------------------- | ---------- | ---------- |
 | SPRING源码         | BIOS 开机启动原理                         | OOP-KLASS 对象模型原理              | TOMCAT源码 | HDFS源码   |
-| SPRING BOOT源码    | TASK_STRUCTURE 线程进程原理               | BYTECODE INTERPRETER                | Netty源码  | MR源码     |
-| MYBATIS源码        | O(N)/O(1)/BFS/CFS SCHEDULER进程调度原理   | TEMPLATE INTERPRETER 字节码解释原理 | Redis源码  | SPARK源码  |
-| SPRINGMVC源码      | ZONE/BUDDY/SLAB                           | JAVACALL 方法调用原理               | MySql源码  | FLINK源码  |
-| Spring Cloud源码-1 | ALLOCATOR 内存管理原理                    | VMTHREAD HEAVY WORK 原理            | MQ源码     | HIVE源码   |
-| Spring Cloud源码-2 | VFS/DENTRY/INODE 文件管理原理             | GENERATION                          |            |            |
-|                    | Socket/SK_BUFF/TCP_INFO/INET_OPT 网络原理 | COLLECTION HEAP 垃圾回收原理        |            |            |
+| Spring Boot源码    | TASK_STRUCTURE 线程进程原理               | ByteCode Interpreter                | Netty源码  | MR源码     |
+| Mybatis源码        | O(N)/O(1)/BFS/CFS SCHEDULER进程调度原理   | Template Interpreter 字节码解释原理 | Redis源码  | Spark源码  |
+| SPRINGMVC源码      | ZONE/BUDDY/SLAB                           | Java Call 方法调用原理              | MySql源码  | FLINK源码  |
+| Spring Cloud源码-1 | ALLOCATOR 内存管理原理                    | VMThread Heavy Work 原理            | MQ源码     | Hive源码   |
+| Spring Cloud源码-2 | VFS/DENTRY/INODE 文件管理原理             | Generation                          |            |            |
+|                    | Socket/SK_BUFF/TCP_INFO/INET_OPT 网络原理 | Collection HEAP 垃圾回收原理        |            |            |
 
 
 
 ### 全局意识
 
-| 高性能WEB集群                              | 云原生架构                               | DEVOPS                 | 全链路压测   | 项目管理 |
+| 高性能WEB集群                              | 云原生架构                               | DevOps                 | 全链路压测   | 项目管理 |
 | ------------------------------------------ | ---------------------------------------- | ---------------------- | ------------ | -------- |
 | HTTP服务的重要基础                         | 什么是云原生与CNCF                       | 瀑布模型与实物交付方式 | 性能测试评估 | JIRA     |
 | 用户访问网站的基本流程                     | 云原生(容器话封装、动态管理、面向微服务) | 敏捷模型与电子交付方式 | 场景分析     | 禅道     |
-| DNS系统解析基本流程                        | Docker与PODMAN新容器                     | 敏捷模型与云交付方式   | 性能监控     |          |
+| DNS系统解析基本流程                        | Docker与PodMan新容器                     | 敏捷模型与云交付方式   | 性能监控     |          |
 | HTTP协议                                   | COREOS容器定制系统                       | 代码质量与项目管理     | 性能分析     |          |
 | HTTP资源                                   | PYTHON自动化运维工具                     | 持续集成CI             |              |          |
 | 网站流量度量术语IP PV UV QPS等             | 容器编排、调度                           | 持续部署CD             |              |          |
-| WWW服务软件揭晓                            | Kubernetes、MESOS、Docker SWARM          | 持续监控CM             |              |          |
+| WWW服务软件揭晓                            | Kubernetes、MESOS、Docker Swarm          | 持续监控CM             |              |          |
 | Nginx APACHE TOMCAT                        | 微服务架构                               | 持续测试CT             |              |          |
 | Nginx WEB服务 20台规模中型百万并发集群架构 |                                          | 运维开发一体化解决方案 |              |          |
 |                                            |                                          | 容器技术与微服务       |              |          |
@@ -654,8 +654,8 @@
 | 敏捷式开发 | TDD：测试驱动开发      | 业务架构       | 单体架构    | 高性能架构   |
 | 瀑布式开发 | BDD：行为驱动开发      | 应用架构       | 分布式架构  | 可用性架构   |
 | 螺旋式开发 | ATDD：验收测试驱动开发 | 数据架构       | 微服务架构  | 伸缩性架构   |
-| 迭代式开发 | DDD：领域驱动开发      | 代码架构       | SERVICEMESH | 可扩展性架构 |
-| DEVOPS开发 |                        | 技术架构       | ServerLESS  | 安全性架构   |
+| 迭代式开发 | DDD：领域驱动开发      | 代码架构       | ServiceMesh | 可扩展性架构 |
+| DevOps开发 |                        | 技术架构       | ServerLess  | 安全性架构   |
 
 
 
@@ -663,13 +663,13 @@
 
 | 逐步落地                                                     |
 | ------------------------------------------------------------ |
-| 完整DEVOPS私有化                                             |
-| 统一参数校验 VALIDATOR                                       |
+| 完整DevOps私有化                                             |
+| 统一参数校验 Validator                                       |
 | 统一异常捕获 返回异常码                                      |
 | 统一错误码规划 根据业务、错误类型划分                        |
 | 接口文档规范 SWAGGER                                         |
-| 代码生成器，统一生成ENTITY、DTO、VO、CONTROLLER、SERVICE、MAPPER.XML |
-| 多环境PROFILE + MAVEN FILTER 切换                            |
+| 代码生成器，统一生成Entity、DTO、VO、Controller、Service、Mapper.xml |
+| 多环境Profile + Maven Filter 切换                            |
 | 业务记录异常、错误日志写入文件，过 FILEBEAT 到 ES 落库       |
 | 统一用户操作日志处理,直接写入到Kafka，ES落库                 |
 | MySql-ES 同步，基于CANAL、Kafka中间件，实现数据的增量、全量同步 |
@@ -683,7 +683,7 @@
 | 缓存服务集群搭建                                             |
 | 网关服务集群搭建                                             |
 | 注册中心服务集群搭建 ETCD / Nacos / Eureka / ZK /Consul      |
-| 监控服务集群搭建 SPRING BOOT ADMIN / Prometheus+ Grafana / ZABBIX |
+| 监控服务集群搭建 Spring Boot Admin / Prometheus+ Grafana / ZABBIX |
 | MQ服务集群搭建 ROCKET MQ / ACTIVE MQ / RABBIT MQ / Kafka     |
 | ES服务集群搭建                                               |
 | 分布式任务调度服务集群搭建 【自研】                          |
