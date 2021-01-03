@@ -9,11 +9,11 @@ docker stop mysql5
 ### 安装
 #### 从Docker库中拉取镜像
 
-`sudo docker pull mysql5`
+`sudo docker pull mysql:5`
 
 #### 拉取完之后，运行该镜像（**可以开启多个数据库服务，只要端口和名称不同就可以**）
 
-`sudo docker run -it --name mysql5 -e MYSQL_ROOT_PASSWORD=123456 -p 3306:3306 -d mysql:5.7`
+`sudo docker run -it --name mysql5 -e MYSQL_ROOT_PASSWORD=123456 -p 3306:3306 -d mysql:5`
 
 #### 连接到mysql
 
