@@ -6,8 +6,7 @@
 
 ### 拉取完之后，运行该镜像（**可以开启多个数据库服务，只要端口和名称不同就可以**）
 ```bash
-docker run --name mysql5 -p 3306:3306 -e MYSQL_ROOT_PASSWORD=123qwe. -d mysql:5 --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --lower_case_table_names=1`
-
+docker run --name mysql5 -p 3306:3306 -e MYSQL_ROOT_PASSWORD=123qwe. -d mysql:5 --character-set-server=utf8mb4 --collation-server=utf8mb4_general_ci --lower_case_table_names=1
 ```
 ### 启动容器
 ```bash
