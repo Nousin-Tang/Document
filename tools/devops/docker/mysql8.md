@@ -9,10 +9,10 @@ docker pull mysql:8
 ## 运行镜像
 
 ```bash
-docker run --name mysql8_4306 -p 4306:3306 -e MYSQL_ROOT_PASSWORD=123qwe. -d mysql:8 --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --lower_case_table_names=1
+docker run --name mysql8_4306 -p 4306:3306 -e MYSQL_ROOT_PASSWORD=123qwe. -d mysql:8 --character-set-server=utf8mb4 --collation-server=utf8mb4_general_ci --lower_case_table_names=1
 
 
-docker run --name mysql8_4306 -p 4306:3306 -v F:/My/data/docker/mysql8_4306/data:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=123qwe. -d mysql:8 --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --lower_case_table_names=1
+docker run --name mysql8_4306 -p 4306:3306 -v F:/My/data/docker/mysql8_4306/data:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=123qwe. -d mysql:8 --character-set-server=utf8mb4 --collation-server=utf8mb4_general_ci --lower_case_table_names=1
 ```
 	
 ## 启动容器
