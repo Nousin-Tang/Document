@@ -1,32 +1,34 @@
 ## 安装Mysql5.7 
-### 启动与停止Mysql5
+
+## 从Docker库中拉取镜像
+
+`docker pull mysql:5`
+
+### 拉取完之后，运行该镜像（**可以开启多个数据库服务，只要端口和名称不同就可以**）
+```bash
+docker run --name mysql5 -p 3306:3306 -e MYSQL_ROOT_PASSWORD=123qwe. -d mysql:5 --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --lower_case_table_names=1`
 
 ```
+### 启动容器
+```bash
 docker start mysql5
 docker stop mysql5
 ```
 
-### 安装
-#### 从Docker库中拉取镜像
-
-`sudo docker pull mysql:5`
-
-#### 拉取完之后，运行该镜像（**可以开启多个数据库服务，只要端口和名称不同就可以**）
-
-`sudo docker run -it --name mysql5 -e MYSQL_ROOT_PASSWORD=123456 -p 3306:3306 -d mysql:5`
-
-#### 连接到mysql
-
-进入容器：`sudo docker exec -it mysql5 "bash"`
-链接：`mysql -uroot -p123456`
-
-#### 使用navicat链接
+### 操作容器
+```bash
+# 进入容器内部: 
+docker exec -it mysql5 bash
+# 链接mysql: 
+mysql -u root -p123qwe.
+```
 
 
-### 虚拟机与主机文件交换
-把docker容器中的配置文件复制到主机中: `docker cp mysql5:/etc/mysql/mysql.conf.d/mysqld.cnf D:\mysql_conf`
+### 文件复制
+```bash
+# 把docker容器中的配置文件复制到主机中: 
+docker cp mysql5:/etc/mysql/my.cnf F:/My/data/docker/mysql/conf/my.cnf
 
-把主机中的配置文件复制到docker容器中: `docker cp D:\mysql_conf mysql5:/etc/mysql/mysql.conf.d/mysqld.cnf`
-
-### 忽略大小写问题设置
-配置文件中追加:`lower_case_table_names=1`
+# 把主机中的配置文件复制到docker容器中: 
+docker cp F:/My/data/docker/mysql/conf/my.cnf mysql5:/etc/mysql/my.cnf
+```
