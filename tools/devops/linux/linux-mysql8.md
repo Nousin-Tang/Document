@@ -5,7 +5,6 @@ cd /usr/local
 wget https://cdn.mysql.com//Downloads/MySQL-8.0/mysql-8.0.19-linux-glibc2.12-x86_64.tar.xz
 tar  -Jxvf  mysql-8.0.19-linux-glibc2.12-x86_64.tar.xz
 mv mysql-8.0.19-linux-glibc2.12-x86_64 mysql8
-mv mysql8 /usr/local
 ```
 
 ### 先检查是否有mysql用户组和mysql用户,没有就添加有就忽略
@@ -27,6 +26,12 @@ chmod 750 /home/mysql/data/ -R
 `export PATH=$PATH:/usr/local/mysql8/bin`
 
 ### 拷贝 my.cnf 文件到 /etc 目录下
+
+> 默认读取配置文件的顺序:
+> 1. /etc/my.cnf
+> 2. /etc/mysql/my.cnf
+> 3. /usr/local/mysql/etc/my.cnf
+> 4. ~/.my.cnf
 
 ### 初始化
 ```
