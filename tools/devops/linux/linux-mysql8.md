@@ -87,13 +87,13 @@ $ /usr/local/mysql8/bin/mysqldump -h IP地址 -u用户名 -p'密码' -R -E 数�
 
 授权所有数据库给用户（远程访问）
 ```mysql
-> GRANT ALL ON *.* TO '用户名'@'%';
+> GRANT ALL PRIVILEGES ON *.* TO '用户名'@'%' with grant option;
 > flush privileges;
 ```
 
 授权指定的数据库给用户（远程访问）
 ```mysql
-> GRANT ALL PRIVILEGES ON 数据库名.* TO '用户名'@'%';
+> GRANT ALL PRIVILEGES ON 数据库名.* TO '用户名'@'%' with grant option;
 > flush privileges;
 ```
 
