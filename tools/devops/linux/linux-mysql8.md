@@ -119,7 +119,7 @@ default-character-set=utf8mb4
 [client]
 port       = 3306
 socket     = /tmp/mysql.sock
- 
+
 [mysqld]
 port       = 3306
 server-id  = 3306
@@ -142,7 +142,8 @@ autocommit =1
 ##################以上要修改的########################
 skip-external-locking
 key_buffer_size = 256M
-max_allowed_packet = 1M
+# 允许一次SQL大小限制
+max_allowed_packet = 8M
 table_open_cache = 1024
 sort_buffer_size = 4M
 net_buffer_length = 8K
@@ -156,9 +157,9 @@ explicit_defaults_for_timestamp = true
 max_connections = 500
 max_connect_errors = 100
 open_files_limit = 65535
- 
+
 binlog_format=mixed
- 
+
 binlog_expire_logs_seconds =864000
 # 创建新表时将使用的默认存储引擎
 default_storage_engine = InnoDB
