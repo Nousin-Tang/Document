@@ -62,3 +62,10 @@ logging:
     com.springboot.nousin: DEBUG
     com.atomikos: ERROR
 ```
+
+
+# YML
+## 多行输入
+tang: >
+  随便输入内容
+  可以换行
