@@ -64,7 +64,7 @@ logging:
 ```
 
 ## 外部配置（优先级高的会覆盖优先级低的配置）
-> 如果指定了 profile 则：application-{profile}.properties或者application-{profile}.yml文件的优先级高于application.properties或application.yml配置
+> 如果指定了 profile 则：application-{profile}.properties/yml文件的优先级高于application.properties/yml配置
 
 优先级：
 1. 在jar包的同一目录下，建一个config文件夹，然后放置配置文件。
