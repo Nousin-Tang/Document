@@ -63,6 +63,14 @@ logging:
     com.atomikos: ERROR
 ```
 
+## 外部配置（优先级高的会覆盖优先级低的配置）
+> 如果指定了 profile 则：application-{profile}.properties或者application-{profile}.yml文件的优先级高于application.properties或application.yml配置
+
+优先级：
+1. 在jar包的同一目录下，建一个config文件夹，然后放置配置文件。
+2. 在jar包的同一目录下，放置配置文件。
+3. 在classpath下，建一个config文件夹，然后放置配置文件。
+4. 在classpath下，放置配置文件。
 
 # YML
 ## 多行输入
