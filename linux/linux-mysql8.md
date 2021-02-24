@@ -114,6 +114,10 @@ flush privileges;
 SET PASSWORD FOR '用户名'@'%' = PASSWORD('用户密码');
 ```
 
+### 设置持久化
+```mysql
+SET PERSIST max_connections = 500;
+```
 
 
 ## 打开端口号
@@ -181,6 +185,7 @@ innodb_log_file_size = 256M
 innodb_log_buffer_size = 8M
 innodb_flush_log_at_trx_commit = 1
 innodb_lock_wait_timeout = 50
+log_bin_trust_function_creators=TRUE
 #
 sql_mode=STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
 
