@@ -17,6 +17,10 @@ import java.util.Map;
  * 使用方式，将dump出来的SQL重命名为：dump.sql，并放在工程目录下。代码会自动获取该SQL执行。
  * （打包成jar后将文件放在jar同级目录下）
  *
+ * <p>
+ *     insert 记录开始结束要有 begin、commit 标识
+ * </p>
+ *
  * @author tangwc
  * @since 2021/7/2
  */
@@ -29,8 +33,11 @@ public class BatchOperation {
     public static final String COMMIT = "COMMIT;"; //
     public static final String BEGIN = "BEGIN;"; //
     public static final String NEW_LINE = "\n";//
-    public static final Integer MAX_LENGTH = 100000;//
+    public static final Integer MAX_LENGTH = 1<<13;//
+    public static int i = 0;
 
+    public static String CURRENT_TABLE = ""; //
+    public static boolean IS_INSERT = false;
     private static final Map<String, Boolean> tableNameMap = new HashMap<>();
 
 //    public static void main(String[] args) {
@@ -65,6 +72,7 @@ public class BatchOperation {
             boolean start = false;
             boolean end = false;
             while ((data = br.readLine()) != null) {
+
                 final String dealSql = dealSql(data);
                 if (dealSql.equalsIgnoreCase(BEGIN)) {
                     start = true;
@@ -93,11 +101,19 @@ public class BatchOperation {
                     clear(sqlTemp);
                     continue;
                 }
-                if (sqlTemp.length() > MAX_LENGTH) {
-                    writeData(out, sqlTemp.toString());
-                    clear(sqlTemp);
-                }
                 sqlTemp.append(dealSql).append(NEW_LINE);
+                if (IS_INSERT && i >= MAX_LENGTH) {
+                    String s = sqlTemp.toString();
+                    if (s.endsWith(sp_1 +  NEW_LINE)) {
+                        s = s.substring(0, s.length() - sp_1.length() - NEW_LINE.length()) + sp + COMMIT + BEGIN + NEW_LINE;
+                    }
+                    writeData(out, s);
+                    clear(sqlTemp);
+                    CURRENT_TABLE = "";
+                    i = 0;
+                }
+                if (IS_INSERT)
+                    i++;
             }
             if (sqlTemp.length() >= 0) {
                 writeData(out, sqlTemp.toString());
@@ -124,6 +140,7 @@ public class BatchOperation {
     }
 
     private static String dealSql(String data) {
+        IS_INSERT = false;
         if (!data.startsWith(insert_pre)) {
             return data;
         }
@@ -132,17 +149,22 @@ public class BatchOperation {
         }
         final String[] split = data.split(insert_val);
         if (split.length == 2) {
+            IS_INSERT = true;
             String tableVal = split[0];
             String values = split[1];
             if (values.endsWith(sp)) {
                 values = values.substring(0, values.length() - sp.length()) + sp_1;
             }
             final String tableName = tableVal.substring(insert_pre.length()).trim();
-            if (tableNameMap.containsKey(tableName)) {
+            if (!CURRENT_TABLE.equals("") && tableNameMap.containsKey(tableName)) {
                 return values;
             } else {
-                System.out.println("正在处理表：" + tableName);
-                tableNameMap.put(tableName, false);
+                if (!tableNameMap.containsKey(tableName)) {
+                    System.out.println("正在处理表：" + tableName);
+                    tableNameMap.put(tableName, false);
+                    i = 0;
+                }
+                CURRENT_TABLE = tableName;
                 return tableVal + insert_val + values;
             }
         }
