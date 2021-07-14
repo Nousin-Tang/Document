@@ -25,18 +25,19 @@ import java.util.Map;
  * @since 2021/7/2
  */
 public class BatchOperation {
-
-    public static final String insert_pre = "INSERT INTO"; //
-    public static final String insert_val = "VALUES"; //
-    public static final String sp = ");"; //
-    public static final String sp_1 = "),"; //
-    public static final String COMMIT = "COMMIT;"; //
-    public static final String BEGIN = "BEGIN;"; //
-    public static final String NEW_LINE = "\n";//
-    public static final Integer MAX_LENGTH = 1<<13;//
+    
+    // 常量
+    public static final Integer MAX_LENGTH = 1<<13;// INSERT 行数限制
+    public static final String insert_pre = "INSERT INTO";
+    public static final String insert_val = "VALUES";
+    public static final String sp = ");";
+    public static final String sp_1 = "),";
+    public static final String COMMIT = "COMMIT;";
+    public static final String BEGIN = "BEGIN;";
+    public static final String NEW_LINE = "\n";
+    
     public static int i = 0;
-
-    public static String CURRENT_TABLE = ""; //
+    public static String CURRENT_TABLE = "";
     public static boolean IS_INSERT = false;
     private static final Map<String, Boolean> tableNameMap = new HashMap<>();
 
