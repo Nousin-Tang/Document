@@ -14,7 +14,6 @@ virtual_drive = 'z:'
 local_source_flag = True
 # 源文件夹
 source_path = 'F:\\py\\product'
-# source_path = '\\server\\汤万才'
 # 目标文件夹
 target_path = cur_dir + os.sep + 'temp'
 # 删除上一次执行结果
