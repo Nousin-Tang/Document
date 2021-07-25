@@ -3,7 +3,11 @@ from openpyxl import load_workbook
 import time
 import os
 
+# 打包
+# pyinstaller -F read-count-excel.py
+
 FROM_EXCEL_NAME = 'excel.xlsx'
+FROM_EXCEL_NAME = '新建文件的副本.xlsx'
 # 获取项目根目录
 PROJECT_ROOT = os.path.dirname(os.path.realpath(__file__))
 # 文件路径
