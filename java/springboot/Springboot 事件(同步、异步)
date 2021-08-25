@@ -1,0 +1,126 @@
+package com.example.demo;
+
+import java.lang.reflect.Method;
+import java.util.concurrent.Executor;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.aop.interceptor.AsyncUncaughtExceptionHandler;
+import org.springframework.beans.factory.InitializingBean;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationEvent;
+import org.springframework.context.ApplicationListener;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.AsyncConfigurer;
+import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.stereotype.Component;
+
+/**
+ * Springboot 默认的事件执行是同步的，除非向容器中添加线程池，使用异步方式（异步方式）
+ */
+@SpringBootApplication
+public class DemoApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(DemoApplication.class, args);
+	}
+
+
+	public static class MyEvent extends ApplicationEvent {
+		private static final long serialVersionUID = 1L;
+		private String message;
+		public MyEvent(Object source, String message) {
+			super(source);
+			this.message = message;
+		}
+		public String getMessage() {
+			return message;
+		}
+		public void setMessage(String message) {
+			this.message = message;
+		}
+	}
+
+	@Component
+	public class ListenerTest1 implements ApplicationListener<MyEvent> {
+
+//		异步方式
+//		@Async
+		public void onApplicationEvent(MyEvent event) {
+
+			System.out.println("ListenerTest1 监听到 MyEvent 事件发生");
+			System.out.println("test1:" + event.getMessage());
+			try {
+				Thread.sleep(500);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+
+			System.out.println("ListenerTest1 处理 MyEvent 结束");
+		}
+	}
+
+
+	@Component
+	public class EventPbulish implements InitializingBean {
+		@Autowired
+		ApplicationContext context;
+
+		@Override
+		public void afterPropertiesSet() throws Exception {
+			System.out.println("发布事件");
+			context.publishEvent(new MyEvent(this, "我的事件"));
+			System.out.println("发布事件 OVER");
+		}
+	}
+
+	//		异步方式
+//	@Configuration
+//	@EnableAsync
+//	public class AsyncConfig implements AsyncConfigurer {
+//
+//		private final Logger log = LoggerFactory.getLogger(this.getClass());
+//
+//		/**
+//		 * 自定义异步线程池，若不重写会使用默认的线程池
+//		 */
+//		@Override
+//		public Executor getAsyncExecutor() {
+//			ThreadPoolTaskExecutor taskExecutor = new ThreadPoolTaskExecutor();
+//			// 核心线程数
+//			taskExecutor.setCorePoolSize(2);
+//			// 最大线程数
+//			taskExecutor.setMaxPoolSize(10);
+//			// 队列大小
+//			taskExecutor.setQueueCapacity(15);
+//			// 线程名的前缀
+//			taskExecutor.setThreadNamePrefix("async-thread-");
+//			taskExecutor.initialize();
+//			return taskExecutor;
+//		}
+//
+//		/**
+//		 * 捕捉IllegalArgumentException异常
+//		 */
+//		@Override
+//		public AsyncUncaughtExceptionHandler getAsyncUncaughtExceptionHandler() {
+//			return new MyAsyncExceptionHandler();
+//		}
+//
+//		class MyAsyncExceptionHandler implements AsyncUncaughtExceptionHandler {
+//			@Override
+//			public void handleUncaughtException(Throwable throwable, Method method, Object... objects) {
+//				log.info("TASK Exception message - " + throwable.getMessage());
+//				log.info("Method name - " + method.getName());
+//				for (Object param : objects) {
+//					log.info("Parameter value - " + param);
+//				}
+//			}
+//		}
+//	}
+}
