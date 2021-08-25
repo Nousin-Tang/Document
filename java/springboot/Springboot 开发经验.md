@@ -72,6 +72,18 @@ logging:
 3. 在classpath下，建一个config文件夹，然后放置配置文件。
 4. 在classpath下，放置配置文件。
 
+
+## springboot 使用maven打jar， 执行Java -jar XXX.jar 提示 “XXX中没有主清单属性”
+pom.xml中需要添加以下配置：
+```xml
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+```
+
 # YML
 ## 多行输入
 ```yaml
