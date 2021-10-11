@@ -20,11 +20,11 @@
 ```xml
 <mirrors>
   <mirror>
-		<id>nexus</id>
-		<name>private-maven</name>
-		<url>http://${host}:${port}/repository/maven-releases/</url>
-		<mirrorOf>central</mirrorOf>
-	</mirror>
+    <id>nexus</id>
+    <name>private-maven</name>
+    <url>http://${host}:${port}/repository/maven-releases/</url>
+    <mirrorOf>central</mirrorOf>
+  </mirror>
 </mirrors>
 ```
 
@@ -32,21 +32,21 @@
 ```xml
 <project>
   <repositories>
-		<!--阿里云代理-->
-		<repository>
-			<id>aliyun</id>
-			<name>aliyun</name>
-			<url>http://maven.aliyun.com/nexus/content/groups/public</url>
-		</repository>
+    <!--阿里云代理-->
+    <repository>
+      <id>aliyun</id>
+      <name>aliyun</name>
+      <url>http://maven.aliyun.com/nexus/content/groups/public</url>
+    </repository>
 
-		<repository>
-			<id>nexus</id><!--repository里的id需要和第一步里的server id名称保持一致-->
-			<name>private-maven</name>
-			<url>http://${host}:${port}/repository/maven-releases</url>
-		</repository>
-	</repositories>
+    <repository>
+      <id>nexus</id><!--repository里的id需要和第一步里的server id名称保持一致-->
+      <name>private-maven</name>
+      <url>http://${host}:${port}/repository/maven-releases</url>
+    </repository>
+  </repositories>
 	
-	<distributionManagement>
+  <distributionManagement>
     <repository>
       <id>nexus</id><!--repository里的id需要和第一步里的server id名称保持一致-->
       <name>private-maven</name><!--仓库名称-->
